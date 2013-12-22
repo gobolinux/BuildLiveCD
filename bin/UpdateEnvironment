@@ -1,0 +1,129 @@
+#!/bin/bash
+
+. ScriptFunctions
+Import OptionParser
+Import GoboLinux 
+
+if [ "$1" == "--help" ]
+then
+   echo "Usage:"
+   echo "   UpdateEnvironment [ <svn-account> [ <local-account> ] ]"
+   echo
+   echo "Run this on an empty directory to create the"
+   echo "GoboLinux LiveCD mastering environment."
+   echo "It will fetch all needed files off the network"
+   echo "and create the proper directory layout."
+   echo "If you have SVN write access, pass your svn.gobolinux.org"
+   echo "username as a parameter." 
+   echo
+   exit 0
+fi
+
+Parse_Conf BuildLiveCD.conf
+
+root=$PWD
+datadir="$livecdDataDir"
+
+#############################################################################
+# Tarballs ("Archives")
+#############################################################################
+echo "=> Downloading archives..."
+
+function get_md5() {
+   md5sum "$1" 2>/dev/null | awk '{print $1}'
+}
+
+function check_and_dl() {
+   url="$1"
+   md5="$2"
+   urlbn=`basename $url`
+   downloadtarget="$root/Archives"
+   localfile="$downloadtarget/$urlbn"
+   localmd5=`get_md5 "$localfile"`
+   if ! [ "$localmd5" = "$md5" ]
+   then
+      rm -f  "$localfile"
+      (cd $downloadtarget; wget -c $url)
+      localmd5=`get_md5 "$localfile"`
+      if ! [ "$localmd5" = "$md5" ]
+      then
+         echo "Failed fetching file with expected md5 sum."
+         echo "Expected md5: $md5"
+         echo "     Got md5: $localmd5"
+         echo "Press Enter to continue or Ctrl+C to abort."
+         read
+      fi
+   fi
+}
+
+(
+   cd $datadir
+   [ -d .svn ] && svn up # svn doesn't need "-dP" args to create new dirs and prune empty
+)
+
+# TODO: make this bi-arch friendly
+arch=i686
+mkdir -p Archives
+cat $datadir/Packages-Devel-$arch | while read url md5
+do
+   echo $url
+   check_and_dl $url $md5
+done
+
+
+#############################################################################
+# LocalSVN
+#############################################################################
+echo "=> Updating local SVN copy..."
+
+if [ "$1" ]
+then
+   svnuser="$1"
+   if [ "$2" ]
+   then localuser="$2"
+   else localuser="$1"
+   fi
+else
+   svnuser=anonymous
+fi
+
+mkdir -p $root/LocalSVN/tools
+cd $root/LocalSVN/
+
+if [ -e $datadir/Packages-List-GoboLinuxTools-SVN ]
+then tools="`cat $datadir/Packages-List-GoboLinuxTools-SVN` InitRDScripts"
+else tools="InitRDScripts"
+fi
+
+for svnrepo in $tools
+do
+   if [ -e "tools/$svnrepo" ]
+   then
+      echo "Updating $svnrepo..."
+      cd tools/$svnrepo
+      svn -q up #-dP
+      cd - &> /dev/null
+   else
+      echo "Getting $svnrepo..."
+      svn -q co http://svn.gobolinux.org/tools/branches/015/$svnrepo tools/$svnrepo
+   fi
+done
+
+files="Descriptions Wallpapers"
+for svnrepo in $files
+do
+   if [ -e "files/$svnrepo" ]
+   then
+      echo "Updating $svnrepo..."
+      cd files/$svnrepo
+      svn -q up #-dP
+      cd - &> /dev/null
+   else
+      echo "Getting $svnrepo..."
+      svn -q co http://svn.gobolinux.org/files/trunk/$svnrepo files/$svnrepo
+   fi
+done
+
+rm -rf files/Documentation
+
+echo "=> Done."

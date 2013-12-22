@@ -1,0 +1,219 @@
+#!/bin/bash
+
+source ScriptFunctions
+Import OptionParser
+Import GoboLinux
+Import Bootstrap
+
+helpOnNoArguments=no
+scriptDescription="Builds the GoboLinux LiveCD InitRD tree."
+scriptCredits="(C)2003-2009 by Hisham Muhammad et al. Released under the GNU GPL."
+scriptUsage="[options]"
+
+Add_Option_Boolean "i" "use-system-index" "Generate a tree using the /System/Index layout."
+Parse_Options "$@"
+
+unset usesystemindex
+Boolean "use-system-index" && usesystemindex=true
+
+
+####################################################
+# Operation
+####################################################
+if [ "$UID" != 0 ]
+then
+   echo "Must be run as superuser."
+   exit 1
+fi
+
+root=$PWD/Output/InitRD
+rolayer=$PWD/Output/ROLayer
+archives=$PWD/Archives/
+
+rm -rf $root
+mkdir -p $root
+
+####################################################
+# Fetch packages
+####################################################
+
+today=`date +%Y%m%d`
+arch=`uname -m`
+
+packages=(
+   BusyBox-InitRD--20060202-SVN--$arch.tar.bz2
+   MiniUdev--0.1--$arch.tar.bz2
+   InitRDScripts--$today-SVN--$arch.tar.bz2
+)
+
+kernel_modules=(
+   loop
+)
+
+cd $root
+
+####################################################
+# Directory structure
+####################################################
+
+Create_Filesystem_Tree $root gobo $usesystemindex
+
+rmdir $root/Mount/*
+mkdir -p $root/Mount/HD0
+mkdir -p $root/Mount/HD1
+mkdir -p $root/Mount/HD2
+mkdir -p $root/Mount/Media
+mkdir -p $root/Mount/.Pivot
+mkdir -p $root/Mount/TmpFS
+mkdir -p $root/Mount/UnionFS
+mkdir -p $root/Mount/SquashFS
+mkdir -p $root/Mount/CD-ROM
+
+
+####################################################
+# Some additional links
+####################################################
+
+ln -nfs ../../proc/mounts $root/System/Settings/mtab
+ln -nfs bin/startGoboLinux $root/linuxrc 
+
+####################################################
+# Nano-InstallPackage
+####################################################
+
+cd $root/Programs
+
+for package in "${packages[@]}"
+do
+   echo "Installing $package inside InitRD..."
+   tar xjpf $archives/$package || Die "Could not install $package."
+done
+
+####################################################
+# Nano-SymlinkProgram
+####################################################
+
+cd $root
+
+if [ "$usesystemindex" ]
+then bindir=System/Index/bin
+else bindir=System/Links/Executables
+fi
+
+ls -d Programs/*/Current/bin/* Programs/*/Current/sbin/* | while read i
+do
+   ln -nfs ../../../$i $bindir
+done
+
+####################################################
+# Populate /System/Kernel/Devices
+####################################################
+
+Create_Device_Nodes $root
+
+####################################################
+# Install required kernel modules
+####################################################
+
+kernelversion=$(basename "$(readlink -f "$rolayer/Programs/Linux/Current")")
+mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
+
+for module in "${kernel_modules[@]}"
+do
+   cd "$rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
+   modpath="$(find -name ${module}.ko)"
+   popd &>/dev/null
+   mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${modpath})"
+   cp --remove-destination $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath} $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath}
+done
+
+depmod -b "${root}" ${kernelversion}-Gobo
+
+####################################################
+# Populate /System/Settings
+####################################################
+
+cat <<EOF > $root/System/Settings/fstab
+/dev/ram0       /               ext2    defaults         
+/proc           /System/Kernel/Status           proc    defaults
+EOF
+
+cat <<EOF > $root/System/Settings/group
+gobo:x:0:
+EOF
+
+cat <<EOF > $root/System/Settings/hostname
+mini-GoboLinux
+EOF
+
+cat <<EOF > $root/System/Settings/inittab
+
+::sysinit:/bin/startGoboLinux
+::respawn:-/bin/ash
+tty2::askfirst:-/bin/ash
+tty3::askfirst:-/bin/ash
+tty4::askfirst:-/bin/ash
+tty5::askfirst:-/bin/ash
+tty6::askfirst:-/bin/ash
+
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r
+::shutdown:/sbin/swapoff -a
+EOF
+
+cat <<EOF > $root/System/Settings/passwd
+gobo:x:0:0::/Users/gobo:/bin/ash
+bin:x:1:1:bin:/bin:
+daemon:x:2:2:daemon:/sbin:
+sync:x:5:0:sync:/sbin:/bin/sync
+uucp:x:10:14:uucp:/var/spool/uucppublic:
+nobody:x:99:99:nobody:/:
+EOF
+
+cat <<EOF > $root/System/Settings/profile
+TERM=linux
+PATH="/System/Links/Executables"
+#PS1="\w>$"
+PS1='\[\033[1;33;41m\]RAMdisk\[\033[1;31;49m\] \w]\[\033[0m\]'
+PS2='> '
+export TERM PATH PS1 PS2
+
+date +"%d/%m %H:%M:%S"
+alias l='ls -l'
+
+if [ $TTY=="/System/Kernel/Devices/tty4" ]
+then
+   /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
+else
+   exec /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
+fi
+EOF
+
+cat <<EOF > $root/System/Settings/rc
+#!/bin/ash
+
+/bin/mount -av
+
+/bin/startGoboLinux 
+
+EOF
+chmod +x $root/System/Settings/rc
+
+cat <<EOF > $root/System/Settings/shadow
+gobo::11501:0:::::
+
+bin:*:9797:0:::::
+daemon:*:9797:0:::::
+sync:*:9797:0:::::
+uucp:*:9797:0:::::
+nobody:*:9797:0:::::
+EOF
+
+cat <<EOF > $root/System/Settings/shells
+/bin/sh
+/bin/ash
+EOF
+
+cat <<EOF > $root/System/Settings/modprobe.conf
+options loop max_loop=64
+EOF

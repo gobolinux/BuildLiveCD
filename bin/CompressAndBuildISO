@@ -1,0 +1,398 @@
+#!/bin/bash
+
+. ScriptFunctions
+Import OptionParser
+Import GoboLinux 
+
+helpOnNoArguments=no
+scriptDescription="Automated program compilation tool."
+scriptCredits="(C)2003-2007 by Hisham Muhammad et al. Released under the GNU GPL."
+scriptUsage="[<start_stage> [<end_stage>]]"
+scriptNotes="   where stage can be: rolayer, squashfs, initrd, iso.
+   For more information, see http://gobolinux.org/?page=livecd"
+
+Parse_Options "$@"
+Parse_Conf BuildLiveCD.conf
+
+export SHELL=/bin/bash
+
+tar --help | grep -q -- --overwrite || Die "Your version of tar is too old. Please upgrade."
+
+# Stages:
+STAGE_ROLAYER=0; STAGE_SQUASHFS=1; STAGE_INITRD=2; STAGE_ISO=3
+
+if [ "$(Arg 1)" ]
+then
+   case "$(Arg 1)" in
+   "rolayer")  start_at=$STAGE_ROLAYER;;
+   "squashfs") start_at=$STAGE_SQUASHFS;;
+   "initrd")   start_at=$STAGE_INITRD;;
+   "iso")      start_at=$STAGE_ISO;;
+   *)          Die "Invalid start stage \"$(Arg 1)\""
+   esac
+else
+   start_at=$STAGE_ROLAYER
+fi
+ 
+if [ "$(Arg 2)" ]
+then
+   case "$(Arg 2)" in
+   "rolayer")  stop_at=$STAGE_ROLAYER;;
+   "squashfs") stop_at=$STAGE_SQUASHFS;;
+   "initrd")   stop_at=$STAGE_INITRD;;
+   "iso")      stop_at=$STAGE_ISO;;
+   *)          Die "Invalid stop stage \"$(Arg 1)\""
+   esac
+else
+   stop_at=$STAGE_ISO
+fi
+
+Verify_Superuser
+
+root=$PWD
+today=`date +%Y%m%d`
+localsvn=$root/LocalSVN
+packages=$root/Packages
+datadir="$livecdDataDir"
+arch=$(ls $packages/*.bz2 | tail -n1 | sed 's,\(.*\)--\(.*\)--\(.*\).tar.bz2,\3,g')
+echo "ARCH is $arch"
+
+unset usesystemindex
+[ "$livecdUseSystemIndex" = "true" ] && usesystemindex="true"
+
+if [ "$usesystemindex" ]
+then filesdir=Data
+else filesdir=Files
+fi
+
+#############################################################################
+# ROLayer
+#############################################################################
+if [ "$start_at" -le "$STAGE_ROLAYER" ] && [ "$stop_at" -ge "$STAGE_ROLAYER" ]
+then
+   echo "=> ROLayer stage started"
+
+   if ! [ -e LocalSVN -a -e Packages -a -e Archives ]
+   then
+      echo 'Basic directories could not be found.'
+      echo 'Please check if you are running the script inside a directory populated by UpdateEnviromnent'
+      exit 1
+   fi
+
+   if [ -e $datadir/Packages-List-GoboLinuxTools-SVN ]
+   then tools=`cat $datadir/Packages-List-GoboLinuxTools-SVN`
+   else tools=""
+   fi
+
+   toolswhichneedmake=""
+   cd "$packages"
+   for package in $tools 
+   do
+      tarball=$package--${today}-SVN--$arch.tar.bz2
+
+      if [ ! -e "$tarball" -o "`find "$localsvn/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
+      then
+         echo "Packing $package SVN snapshot..."
+         rm -rf $package                    # only required if there are leftovers from a previous execution
+         mkdir -p $package
+         cp -a $localsvn/tools/$package $package/${today}-SVN
+
+         # paranoia check
+         if [ "$arch" != "$(uname -m)" ]
+         then
+            echo "Error: some GoboLinux tools packages must be compiled on demand, but the current"
+            echo "architecture ($(uname -m)) differs from that targeted by the tarballs stored in"
+            echo "the Packages directory ($(arch))."
+            exit 1
+         fi
+
+         # we need to build here in order to create the files which are going to be linked inside BuildRoot
+         [ -e $package/${today}-SVN/Makefile ] && echo Building $package/${today}-SVN && make -C $package/${today}-SVN > /dev/null 
+         find $package/${today}-SVN/ -type d -name .svn | xargs rm -rf
+         rm -f $package--*--$arch.tar.bz2   # cleaning up old versions too
+         tar cjpf $tarball $package/${today}-SVN  # create the package
+         rm -rf $package
+         toolswhichneedmake="$toolswhichneedmake $package"
+      else
+         echo "Not repacking $package SVN snapshot..."
+      fi
+
+   done
+
+   echo
+   echo "Building root..."
+   cd "$root"
+
+   unset buildrootopts
+   [ "$usesystemindex" ] && buildrootopts="--use-system-index"
+   BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
+   
+   echo
+   cd "$root"
+   for package in $tools 
+   do
+      # we build the tools again to ensure they are prepared to the LiveCD environment
+      if [ -e Output/ROLayer/Programs/$package/${today}-SVN/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
+      then 
+         echo "Rebuilding $package..." 
+         chroot Output/ROLayer make -C Programs/$package/${today}-SVN/ clean  
+         chroot Output/ROLayer make -C Programs/$package/${today}-SVN/        
+      fi
+   done
+
+   Log_Normal "Installing Aliens"
+   mkdir -p "${root}/Output/ROLayer/System/Aliens/"
+   exec 3<> "$datadir/Aliens-Packages-List"
+   while read line <&3
+   do
+      line="$(echo "${line}" | sed -r -e 's,\W*#.*,,' -e '/^\W*$/d')"
+      [ -z "${line}" ] && continue
+      alien="$(echo "${line}" | awk '{ print $1 }')"
+      version="$(echo "${line}" | awk '{ print $2 }')"
+
+      unset ualiens
+      for unmanaged_aliens in "${root}/Output/ROLayer/Programs/"*"/Current/Resources/Unmanaged/System/Aliens"
+      do
+         ualiens="${ualiens:+${ualiens}:}${unmanaged_aliens}=ro"
+      done
+      
+      unionfs -o dirs=${root}/Output/ROLayer/System/Aliens=rw:${ualiens} "${root}/Output/ROLayer/System/Aliens"
+      if ! chroot "${root}/Output/ROLayer" Alien --met "${alien}" ${version} > /dev/null
+      then
+         echo "Installing ${alien}"
+         chroot "${root}/Output/ROLayer" Alien --install "${alien}" >/dev/null
+      else
+         echo "Keeping ${alien} $(chroot "${root}/Output/ROLayer" Alien --getversion "${alien}")"
+      fi
+      umount "${root}/Output/ROLayer/System/Aliens"
+   done
+
+   echo "Coping $filesdir from LocalSVN..."
+   # Add few items to rolayer
+   for directory in Descriptions Wallpapers
+   do
+      if ! diff --recursive --exclude=.svn "LocalSVN/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
+      then
+         echo "Updating /$filesdir/$directory"
+         rm -rf "Output/ROLayer/$filesdir/$directory"
+         cp -a "LocalSVN/files/$directory" "Output/ROLayer/$filesdir"
+      else
+         echo "Keeping $filesdir/$directory"
+      fi
+   done
+
+   # Clean SVN files from ROLayer
+   echo "Removing SVN files..."
+   find Output/ROLayer/$filesdir -type d -name .svn | xargs rm -rf
+
+   echo "=> ROLayer stage done"
+fi
+
+#############################################################################
+# Squashfs
+#############################################################################
+if [ "$start_at" -le "$STAGE_SQUASHFS" ] && [ "$stop_at" -ge "$STAGE_SQUASHFS" ]
+then
+   echo "=> SquashFS stage started"
+   squashfsmajor=`mksquashfs -version 2> /dev/null | head -n 1 | awk {'print $3'} | cut -d. -f1`
+   if [ ! "$squashfsmajor" ] || [ $squashfsmajor -lt 4 ]
+   then
+      echo "You need to install SquashFS-Tools version 4.0 or above."
+      exit 1
+   fi
+
+   build_layers=(
+      "Output/RWLayer=ro"
+      "Output/ROLayer=ro"
+   )
+   unionfs_dirs=`echo "${build_layers[@]}" | tr " " ":"`
+   mkdir -p Output/Environment
+   mkdir -p Output/RWLayer
+   echo "Unionfs mounting layers."
+   tmp_mp=`mktemp -d /tmp/finalize_layer-XXXXX`
+   unionfs_dirs="dirs=${tmp_mp}=rw:${unionfs_dirs}"
+   unionfs -o ${unionfs_dirs} Output/Environment || { echo Error mounting Output/Environment; exit 1; }
+
+   mkdir -p Output/Checksums
+   
+   function ld_so_cache_changed() {
+      if grep -q "Programs/Glibc/Settings/ld.so.cache" /tmp/newer.txt
+      then
+         diff ../ld.so.cache.sum ../ld.so.cache.sum.old &> /dev/null
+         if [ $? -ne 0 ]
+         then
+            cp ../ld.so.cache.sum ../ld.so.cache.sum.old
+            return 0
+         fi
+      fi
+      return 1
+   }
+
+   function mksquashfs_on_demand() {
+      out="$1"
+      dirs="$2"
+      searchdirs="$3"
+      blacklist="$4"
+
+      bn=`basename "$out"`
+      [ -z "$searchdirs" ] && searchdirs="$dirs"
+      diffs=0
+      if [ -e "$out" ]
+      then
+         echo "Checking if $bn needs updating..."
+         Quiet pushd ../ROLayer
+         find $searchdirs -newer "$out" 2> /dev/null > /tmp/newer.txt
+         Quiet popd
+         Quiet pushd ../RWLayer
+         find $searchdirs -newer "$out" 2> /dev/null >> /tmp/newer.txt
+         Quiet popd
+         diffs=`cat /tmp/newer.txt | grep -v "^Programs/Glibc$\|^Programs/Glibc/Settings$\|^Programs/Glibc/Settings/ld.so.cache$" | wc -l`
+         ld_so_cache_changed
+         
+         if [ $diffs -ne 0 ]
+         then
+            echo ==========
+            echo Changes:
+            echo ----------
+            cat /tmp/newer.txt
+            echo ==========
+         fi
+      fi
+      if [ ! -e "$out" ] || [ $diffs -gt 0 ] || ld_so_cache_changed
+      then
+         echo "Creating squashfs compressed file $bn..."
+         Quiet rm $out
+         nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         rtn=1  # Created squashfs file
+      else
+         echo "Mksquashfs not needed for $bn."
+         rtn=2  # No need to recreate file
+      fi
+      rm -f /tmp/newer.txt
+      return $rtn # 1=File recreated   2=File same
+   }
+
+   # Final actions on Environment
+   chroot Output/Environment /bin/ldconfig
+   md5sum Output/Environment/Programs/Glibc/Settings/ld.so.cache > Output/ld.so.cache.sum
+
+   # compress the uncompressed files into squashfs files
+   mkdir -p Output/ISO
+   Quiet pushd Output/Environment
+   time mksquashfs_on_demand ../ISO/GoboLinux-files.squashfs $filesdir
+
+   for i in $datadir/Packages-List-*; do 
+      squashfile=../ISO/`basename $i`.squashfs
+      if [ "$i" -nt "$squashfile" ]
+      then
+         echo "$i is more recent than $squashfile."
+         echo "Deleting $squashfile to force regeneration."
+         rm -f "$squashfile"
+      fi
+      # Skip comments
+      applist=`cat $i | cut -f1 -d' ' | grep -v "^#" | sort -u | while read i; do [ ! -z "$i" ] && echo $i; done`
+
+      if [ -z "$applist" ]
+      then continue
+      fi
+      searchdirs=`for i in $applist; do echo Programs/$i; done | tr -s '\n' ' '`
+
+      # Conditionally regen squashfs.  Need to do return code hack because time returns 0
+      rtn_file=`mktemp /tmp/BuildLiveCD_return.XXXXXXX`
+      time (mksquashfs_on_demand $squashfile "$searchdirs" "" ""; echo $? >$rtn_file)
+      rtn=`cat $rtn_file`
+      rm -f $rtn_file
+
+      # If the squashfs was generated, it contains Packagename dirs rather than Programs/Foo
+      # If we append to an existing squashfs -root-becomes allows the root to be reassigned
+      # in this case, Programs
+      empty_dir=`mktemp -d /tmp/BuildLiveCD-emptydir.XXXXX`
+      chmod a+rx "${empty_dir}"
+      [ "$rtn" == "1" ] && Quiet mksquashfs $empty_dir $squashfile -root-becomes Programs
+      rmdir $empty_dir
+   done
+
+   contents="$(ls --hide="$filesdir" --hide="Programs" --hide="Users" | tr -s '\n' ' ')"
+   time mksquashfs_on_demand ../ISO/GoboLinux-rest.squashfs "$contents" "" "System/Aliens*"
+   time mksquashfs_on_demand ../ISO/GoboLinux-aliens.squashfs "System/Aliens" "" ""
+   if [ $? == 1 ]
+   then
+      empty_dir=$(mktemp -d /tmp/BuildLiveCD-emptydir.XXXXX)
+      chmod a+rx "${empty_dir}"
+      Quiet mksquashfs $empty_dir ../ISO/GoboLinux-aliens.squashfs -root-becomes System
+      rmdir $empty_dir
+   fi
+   Quiet popd # Output/Environment
+
+   umount Output/Environment
+   rmdir Output/Environment
+   rm -rf $tmp_mp
+   echo "=> SquashFS stage done"
+fi
+
+#############################################################################
+# InitRD
+#############################################################################
+if [ "$start_at" -le "$STAGE_INITRD" ] && [ "$stop_at" -ge "$STAGE_INITRD" ]
+then
+   echo "=> InitRD stage started"
+
+   if ! [ -e Archives ]
+   then
+      echo 'Basic directory Archives could not be found.'
+      echo 'Please check if you are running the script inside a directory populated by UpdateEnviromnent'
+      exit 1
+   fi
+
+   mkdir -p Output/ISO
+   echo "Unpacking CD-Bootloader..."
+   tar  xfj Archives/CD-Bootloader-$arch.tar.bz2 --overwrite -C Output/ISO/
+
+   #Rebuild initrd
+   initrd_dir=Output/InitRD
+
+   cd Archives/
+   for package in InitRDScripts
+   do
+      echo "Packing $package SVN snapshot..."
+      tarball=$package--${today}-SVN--$arch.tar.bz2
+      rm -rf $package
+      rm $package--*
+      mkdir -p $package/${today}-SVN
+      cp -a $localsvn/tools/$package/* $package/${today}-SVN
+      cd $package/${today}-SVN
+      [ -e Makefile ] && make > /dev/null
+      find -type d -name .svn | xargs rm -rf 
+      cd ..
+      ln -nfs ${today}-SVN Current
+      cd ..
+      rm -f $tarball
+      tar cjpf $tarball $package
+      rm -rf $package
+   done
+   cd $root
+
+   unset makeinitrdopts 
+   [ "$usesystemindex" ] && makeinitrdopts="--use-system-index"
+   MakeInitRDTree $makeinitrdopts || Die "Failed creating initrd environment."
+
+   echo "Copying isolinux/kernel from Output/ROLayer/System/Kernel/Boot/kernel"
+   cp --remove-destination Output/ROLayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel Output/ISO/isolinux/kernel
+   mkfs.cramfs $initrd_dir Output/ISO/isolinux/initrd
+   echo "=> InitRD stage done"
+fi
+
+#############################################################################
+# ISO
+#############################################################################
+if [ "$start_at" -le "$STAGE_ISO" ] && [ "$stop_at" -ge "$STAGE_ISO" ]
+then
+   echo "=> ISO stage started"
+   echo "Generate md5sums"
+   Quiet pushd Output/ISO
+   md5sum isolinux/kernel isolinux/initrd *.squashfs >md5sums
+   Quiet popd   
+   iso_name="Output/GoboLinux-NoVersion.iso"
+   time nice -20 mkisofs -R -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table Output/ISO  > $iso_name
+   echo "=> ISO stage done"
+fi
