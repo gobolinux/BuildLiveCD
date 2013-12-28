@@ -271,7 +271,7 @@ do
       then unset version
       fi
       pkg=`get_package_name $line`
-      install_package "$pkg" "$root"
+      [ ! -z "$pkg" ] && install_package "$pkg" "$root"
    done
 done
 
