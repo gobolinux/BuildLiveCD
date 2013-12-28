@@ -105,7 +105,8 @@ do
       cd - &> /dev/null
    else
       echo "Getting $svnrepo..."
-      svn -q co http://svn.gobolinux.org/tools/branches/015/$svnrepo tools/$svnrepo
+      svn -q co http://svn.gobolinux.org/tools/branches/015/$svnrepo tools/$svnrepo || \
+      svn -q co http://svn.gobolinux.org/tools/trunk/$svnrepo tools/$svnrepo
    fi
 done
 
