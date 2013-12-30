@@ -357,7 +357,7 @@ then
       echo "Packing $package SVN snapshot..."
       tarball=$package--${today}-SVN--$arch.tar.bz2
       rm -rf $package
-      rm $package--*
+      rm -f $package--*
       mkdir -p $package/${today}-SVN
       cp -a $localsvn/tools/$package/* $package/${today}-SVN
       cd $package/${today}-SVN
