@@ -120,6 +120,7 @@ mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
 
 for module in "${kernel_modules[@]}"
 do
+   [ -z "$module" ] && continue
    cd "$rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
    modpath="$(find -name ${module}.ko)"
    popd &>/dev/null
