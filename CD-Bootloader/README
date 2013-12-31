@@ -1,0 +1,20 @@
+This CD is compressed as a set of SquashFS images. To access its contents:
+
+  * You may add SquashFS support to your existing system (GoboLinux kernel has
+    this support by default) and then mount the desired image:
+    $ mount -o loop -t squashfs /Mount/CD-ROM/Packages-List-Base.squashfs /Mount/SquashFS
+
+  * Alternatively, you may boot from the CD.  This uses the ISOLINUX
+    bootloader.
+
+  * In addition, you can help test the LiveFlash option.  Please see
+    README.USB for more information.  The LiveFlash is currently in beta
+    and has received limited testing.  This uses the SYSLINUX bootloader.
+
+
+For more information about SquashFS, see
+    http://squashfs.sf.net
+
+For more information about ISOLINUX and SYSLINUX, see
+    http://syslinux.zytor.com
+

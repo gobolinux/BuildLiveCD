@@ -344,10 +344,6 @@ then
       exit 1
    fi
 
-   mkdir -p Output/ISO
-   echo "Unpacking CD-Bootloader..."
-   tar  xfj Archives/CD-Bootloader-$arch.tar.bz2 --overwrite -C Output/ISO/
-
    #Rebuild initrd
    initrd_dir=Output/InitRD
 

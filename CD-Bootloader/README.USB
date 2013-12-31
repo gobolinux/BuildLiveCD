@@ -1,0 +1,37 @@
+Thanks for your interest in GoboLinux's LiveFlash option.  This option
+if currently in BETA and has received limited testing.
+
+To use this, you will need a USB flashdrive with at least 1GB, and 
+a PC that supports USB booting.
+
+Instructions:
+
+1. Mount ISO
+   'mount -o loop GoboLinux-014-i686.iso /Mount/CD-ROM'
+2. Mount your flashdrive
+   'mount /dev/sdX1 /Mount/Flash' [1] [2]
+2. Copy the contents of the ISO to your vfat formatted flash
+   'cp -r /Mount/CD-ROM /Mount/Flash'
+3. Install syslinux bootloader to your flash's vfat partition.
+   '/Mount/Flash/syslinux/syslinux /dev/sdX1' [1]
+4. Unmount you flash
+   'umount /Mount/Flash'
+5. Reboot
+
+Optionally, you may enable R/W persistence.  This saves your changes
+between boots.
+
+1. Mount your flashdrive
+   'mount /dev/sdX1 /Mount/Flash' [1] [2]
+2. Create a file for an ext2 image called Root-RW.ext2
+   'dd if=/dev/zero of=/Mount/Flash/Root-RW.ext2 bs=XX count=YY' [3]
+3. Format the file you just created
+   'mkfs.ext2 /Mount/Flash/Root-RW.ext2`
+4. Unmount you flash
+   'umount /Mount/Flash'
+
+[1] Replace sdX1 with your flashdrive's dev node.
+[2] May need to create /Mount/Flash.
+[3] Adjust bs and count to select file size.  For instance, 
+    "bs=1MB count=128" will create a 128MB file.
+

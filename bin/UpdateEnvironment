@@ -22,54 +22,139 @@ fi
 Parse_Conf BuildLiveCD.conf
 
 root=$PWD
+output=$PWD/Output
+archives=$PWD/Archives
+cdbootloaderdir="$(readlink -f $(dirname $0)/../CD-Bootloader)"
+isolinuxdir="$cdbootloaderdir/isolinux"
+ppmfile="$isolinuxdir/gobolinux015.ppm"
+builddir="$PWD/TemporaryBuild"
+mkdir -p "$builddir"
+
 datadir="$livecdDataDir"
-
-#############################################################################
-# Tarballs ("Archives")
-#############################################################################
-echo "=> Downloading archives..."
-
-function get_md5() {
-   md5sum "$1" 2>/dev/null | awk '{print $1}'
-}
-
-function check_and_dl() {
-   url="$1"
-   md5="$2"
-   urlbn=`basename $url`
-   downloadtarget="$root/Archives"
-   localfile="$downloadtarget/$urlbn"
-   localmd5=`get_md5 "$localfile"`
-   if ! [ "$localmd5" = "$md5" ]
-   then
-      rm -f  "$localfile"
-      (cd $downloadtarget; wget -c $url)
-      localmd5=`get_md5 "$localfile"`
-      if ! [ "$localmd5" = "$md5" ]
-      then
-         echo "Failed fetching file with expected md5 sum."
-         echo "Expected md5: $md5"
-         echo "     Got md5: $localmd5"
-         echo "Press Enter to continue or Ctrl+C to abort."
-         read
-      fi
-   fi
-}
-
-(
-   cd $datadir
+if [ -d "$datadir" ]
+then
+   Quiet pushd "$datadir"
    [ -d .svn ] && svn up # svn doesn't need "-dP" args to create new dirs and prune empty
-)
+   Quiet popd
+fi
 
-# TODO: make this bi-arch friendly
-arch=i686
-mkdir -p Archives
-cat $datadir/Packages-Devel-$arch | while read url md5
-do
-   echo $url
-   check_and_dl $url $md5
-done
+#############################################################################
+# CD Bootloader and BusyBox
+#############################################################################
 
+function DownloadLatest() {
+   local url="$1"
+   local filename="$2"
+   local extension="$3"
+   local archive=$(wget -q "$url" -O - | grep "$filename" | grep "$extension\"" | tail -n1 | sed 's,\(.*\)href=\(.\),\2,g' | cut -d\" -f2)
+   wget -q "$url/$archive" -O "$builddir/$archive"
+}
+
+function UnpackArchive() {
+   local archive="$1"
+   local archiveDir=$(echo "$archive" | sed 's,\.tar.*,,g')
+   if [ ! -d "$archiveDir" ]
+   then
+      case "$archive" in
+         *.tar.gz)  tar zxvf "$archive" >&2 ;;
+         *.tar.xz)  tar Jxvf "$archive" >&2 ;;
+         *.tar.bz2) tar jxvf "$archive" >&2 ;;
+         *) echo "File $archive has unsupported extension. Please fix this in the UpdateEnvironment script." >&2 ;;
+      esac
+   fi
+   echo "$archiveDir"
+}
+
+function BuildISOLINUX() {
+   local archiveDir="$1"
+   local installDir="$2"
+   local ppmFile="$3"
+   local makeFlags="bios"
+
+   if [ ! -e /usr/local/lib/libgnuefi.a -a ! -e /usr/lib/libgnuefi.a ]
+   then
+      echo "*****************************************************************************"
+      echo "Warning: GNU-EFI does not seem to be installed in your host operating system."
+      echo "Failing to meet this dependency will prevent ISOLINUX from being built."
+      echo "*****************************************************************************"
+      echo
+      echo "Press any key to continue."
+      read
+   fi
+
+   Quiet pushd "$archiveDir"
+   # Patch
+   if ! grep -q "/Programs" efi/find-gnu-efi.sh
+   then
+      GrepReplace -B "^include_dirs=\"" "include_dirs=\"/Programs/GNU-EFI/Current/include " efi/find-gnu-efi.sh
+      GrepReplace -B "^lib_dirs=\"" "lib_dirs=\"/Programs/GNU-EFI/Current/lib " efi/find-gnu-efi.sh
+   fi
+   # Set build flags
+   case $(uname -m) in
+       i686)   makeFlags="bios efi32" ;;
+       x86_64) makeFlags="bios efi64" ;;
+       *)      echo "Unknown architecture $(uname -m). Please patch the UpdateEnvironment script." ;;
+   esac
+   # Build
+   make $makeFlags
+   # Install
+   cp -v bios/linux/syslinux "$installDir/syslinux"
+   cp -v bios/core/isolinux.bin "$installDir/isolinux"
+   cp -v bios/com32/elflink/ldlinux/ldlinux.c32 "$installDir/isolinux" ### TODO: it should be ldlinux.c64 on x86_64. We need to test.
+   utils/ppmtolss16 < "$ppmFile" > "$installDir/isolinux/gobo.lss"
+   Quiet popd
+}
+
+function BuildBusyBox() {
+   local archiveDir="$1"
+   local version=$(basename $archiveDir | sed 's,busybox-,,g')
+   local installDir="$2/$version"
+
+   mkdir -p "$installDir"
+   Quiet pushd "$archiveDir"
+   if [ ! -e ".config" -o "$datadir/busybox.config" -nt ".config" ]
+   then
+      cp -v "$datadir/busybox.config" ".config"
+      yes | make oldconfig 
+   fi
+   GrepReplace -B "CONFIG_PREFIX=.*" "CONFIG_PREFIX=\"$installDir\"" .config
+   ln -nfs "$version" "$2/Current"
+   make && make install
+   Quiet popd
+}
+
+echo "=> Building the CD bootloader..."
+
+# Create the ISO work directory
+if [ ! -d "$output/ISO/isolinux" ]
+then
+   mkdir -p $output/ISO
+   cp -R "$cdbootloaderdir/"* $output/ISO
+   find $output/ISO -name ".svn" -type d | xargs rm -rf
+fi
+
+# Build ISOLINUX
+if [ ! -e "$output/ISO/isolinux/isolinux.bin" ]
+then
+   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/" "syslinux" "tar.xz"
+   Quiet pushd "$builddir"
+   archiveDir="$(UnpackArchive $(ls syslinux*.tar.xz | tail -n1))"
+   Quiet popd
+   BuildISOLINUX "$builddir/$archiveDir" "$output/ISO" "$ppmfile"
+fi
+
+# Build BusyBox
+if [ $(ls $archives/BusyBox-InitRD--* 2> /dev/null | wc -l) = 0 ]
+then
+   DownloadLatest "http://www.busybox.net/downloads/" "busybox-1" "tar.bz2"
+   Quiet pushd "$builddir"
+   archiveDir="$(UnpackArchive $(ls busybox-1*.tar.bz2 | tail -n1))"
+   Quiet popd
+   BuildBusyBox "$builddir/$archiveDir" "$builddir/BusyBox-InitRD"
+   Quiet pushd "$builddir"
+   tar cjf $archives/BusyBox-InitRD--$(ls BusyBox-InitRD/ | head -n1)--$(uname -m).tar.bz2 BusyBox-InitRD
+   Quiet popd
+fi
 
 #############################################################################
 # LocalSVN

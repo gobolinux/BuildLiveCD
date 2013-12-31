@@ -41,13 +41,11 @@ today=`date +%Y%m%d`
 arch=`uname -m`
 
 packages=(
-   BusyBox-InitRD--20060202-SVN--$arch.tar.bz2
-   MiniUdev--0.1--$arch.tar.bz2
+   $(basename $(ls $archives/BusyBox-InitRD--*--$arch.tar.bz2))
    InitRDScripts--$today-SVN--$arch.tar.bz2
 )
 
 kernel_modules=(
-   loop
 )
 
 cd $root
