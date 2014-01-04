@@ -94,7 +94,7 @@ done
 cd $root
 
 if [ "$usesystemindex" ]
-then bindir=System/Index/bin
+then bindir=usr/bin
 else bindir=System/Links/Executables
 fi
 
@@ -211,8 +211,4 @@ EOF
 cat <<EOF > $root/System/Settings/shells
 /bin/sh
 /bin/ash
-EOF
-
-cat <<EOF > $root/System/Settings/modprobe.conf
-options loop max_loop=64
 EOF

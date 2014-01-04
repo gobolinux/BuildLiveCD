@@ -110,7 +110,7 @@ function symlink_program() {
    full_path="$1"
    root=`readlink -f $2`
    gobolinks=/System/Links
-   goboindex=/System/Index
+   goboindex=/usr
    name=$(basename $(dirname $full_path))
    version=$(basename ${full_path})
    #echo "Linking ${full_path} inside ${gobolinks}" 1>&2
