@@ -126,7 +126,7 @@ function symlink_program() {
       do_link ${full_path}/man ${goboindex}/share/man
       do_link ${full_path}/info ${goboindex}/share/info
       do_link ${full_path}/include ${goboindex}/include
-      do_link ${full_path}/../Settings ${goboindex}/../Settings
+      do_link ${full_path}/../Settings ${gobolinks}/../Settings
       do_link ${full_path}/share ${goboindex}/share
    else
       do_link ${full_path}/bin ${gobolinks}/Executables
