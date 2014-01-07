@@ -97,11 +97,17 @@ function BuildISOLINUX() {
    esac
    # Build
    make $makeFlags
-   # Install
-   cp -v bios/linux/syslinux "$installDir/syslinux"
-   cp -v bios/core/isolinux.bin "$installDir/isolinux"
-   cp -v bios/com32/elflink/ldlinux/ldlinux.c32 "$installDir/isolinux" ### TODO: it should be ldlinux.c64 on x86_64. We need to test.
+   modules32=(
+       bios/core/lpxelinux.0
+       bios/core/isolinux.bin
+       bios/com32/lib/libcom32.c32
+       bios/com32/menu/vesamenu.c32
+       bios/com32/libutil/libutil.c32
+       bios/com32/elflink/ldlinux/ldlinux.c32
+   )
+   for module in ${modules32[@]}; do cp -v "$module" "$installDir/isolinux"; done
    utils/ppmtolss16 < "$ppmFile" > "$installDir/isolinux/gobo.lss"
+   cp -v bios/linux/syslinux "$installDir/syslinux"
    Quiet popd
 }
 
