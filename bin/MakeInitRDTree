@@ -100,7 +100,7 @@ fi
 
 ls -d Programs/*/Current/bin/* Programs/*/Current/sbin/* | while read i
 do
-   ln -nfs ../../../$i $bindir
+   ln -nfs /$i $bindir/
 done
 
 ####################################################
