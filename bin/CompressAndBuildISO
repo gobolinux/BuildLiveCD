@@ -170,7 +170,7 @@ then
 
    echo "Coping $filesdir from LocalSVN..."
    # Add few items to rolayer
-   for directory in Descriptions Wallpapers
+   for directory in Descriptions Wallpapers Fonts
    do
       if ! diff --recursive --exclude=.svn "LocalSVN/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
       then
