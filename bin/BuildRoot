@@ -59,7 +59,7 @@ function get_package_name() {
    fi
    if [ "`ls $packagedir/${packagename}--* | wc -l 2> /dev/null`" -gt 1 ]
    then  
-      Die "*** More than one version for $packagename available. Aborting. ***"
+      Log_Terse "*** Warning: more than one version for $packagename available. ***"
    fi
 
    echo "$pkg"
@@ -147,12 +147,9 @@ function symlink_program() {
 }
 
 function program_md5() {
-   #
-   # BIG FAT WARNING:
-   # Assuming we have only one version per program
-   #
    name="$1"
-   cat "${root}"/../Checksums/$name--* 2> /dev/null | tail -1 || echo "0000"
+   version="$2"
+   cat "${root}"/../Checksums/$name--$version 2> /dev/null | tail -1 || echo "0000"
 }
 
 function install_package() {
@@ -160,33 +157,31 @@ function install_package() {
    root="$2"
    base=$(basename $package)
    name=${base%%--*}
-   version=${base#*--}
-   version=`echo ${version%%--*} | sed -r 's/-r[0-9]+(p[0-9]+)?$//g'`
+   packageversion=${base#*--}
+   version=`echo ${packageversion%%--*} | sed -r 's/-r[0-9]+(p[0-9]+)?$//g'`
    if [ "$usesystemindex" ]
    then vardir=/Data/Variable
    else vardir=/System/Variable
    fi
    
-   #
-   # BIG FAT WARNING:
-   # Assuming we have only one version per program
-   #
    packagemd5=`md5sum $package`
    if [ -d "$root/Programs/$name" ]
    then 
-      if [ "`program_md5 $name`" =  "$packagemd5" ]
+      if [ "`program_md5 $name $version`" =  "$packagemd5" ]
       then
          Log_Normal "Keeping $name $version..."
 
          # just keep package: md5 matches last installation
          return
       else
-         Log_Normal "Removing existing $name..."
+         Log_Normal "Removing existing $name $version..."
 
          # cleanup old md5 file
-         rm -f "${root}"/../Checksums/$name--*
+         rm -f "${root}"/../Checksums/$name--$packageversion*
          # remove the installed package: $package was updated 
-         rm -rf "$root/Programs/$name"
+         rm -rf "$root/Programs/$name/$version"
+         rm -rf "$root/Programs/$name/Settings"
+         rmdir  "$root/Programs/$name/" >& /dev/null
       fi
    fi
    echo "$packagemd5" > "${root}"/../Checksums/$name--$version
@@ -270,8 +265,8 @@ do
       if echo "${version:0:1}" | grep -q "^#"
       then unset version
       fi
-      pkg=`get_package_name $line`
-      [ ! -z "$pkg" ] && install_package "$pkg" "$root"
+      pkgs=(`get_package_name $line`)
+      for pkg in ${pkgs[@]}; do install_package "$pkg" "$root"; done
    done
 done
 
