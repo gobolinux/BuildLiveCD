@@ -230,7 +230,7 @@ Log_Normal "BuildRoot: Building root $root..."
 # Base Directories
 #
 superuser=0
-Create_Filesystem_Tree $root 0 $usesystemindex
+Create_Filesystem_Tree $root gobo $usesystemindex
 Create_Device_Nodes $root
 
 #
