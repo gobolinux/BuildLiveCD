@@ -52,6 +52,8 @@ postgres:x:112:
 clamav:x:113:
 cyrus-imapd:x:114:
 plugdev:x:115:gobo
+shadow:x:116:
+lpadmin:x:118:
 EOF
 
 cat group | cut -d: -f1-3 | sed 's,:x:.*,:x::,g' > gshadow
