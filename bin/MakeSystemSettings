@@ -32,6 +32,7 @@ cdrom:x:13:
 utmp:x:14:
 uucp:x:15:
 fibo:x:21:
+polkitd:x:31
 postfix:x:32:
 postdrop:x:33:postfix
 nogroup:x:99:
@@ -76,6 +77,7 @@ messagebus:x:27:110::/var/empty:/bin/nologin
 postgres:x:28:112::/var/empty:/bin/nologin
 clamav:x:29:113::/var/empty:/bin/nologin
 cyrus-imapd:x:30:114::/var/empty:/bin/nologin
+polkitd:x:31:31::/var/empty:/bin/nologin
 postfix:x:32:32::/var/empty:/bin/nologin
 EOF
 
