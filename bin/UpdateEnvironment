@@ -104,19 +104,62 @@ function InstallISOLINUX() {
    local archiveDir="$1"
    local installDir="$2"
    local ppmFile="$3"
-   
-   Quiet pushd "$archiveDir"
-   modules32=(
-       bios/core/lpxelinux.0
-       bios/core/isolinux.bin
-       bios/com32/lib/libcom32.c32
-       bios/com32/menu/vesamenu.c32
-       bios/com32/libutil/libutil.c32
-       bios/com32/elflink/ldlinux/ldlinux.c32
+ 
+   # BIOS
+   local bios_loaders=(
+       bios/core/isolinux.bin                  # BIOS loader
+       bios/com32/elflink/ldlinux/ldlinux.c32  # Dependency. Must be installed on the same directory
    )
-   for module in ${modules32[@]}; do cp -v "$module" "$installDir/isolinux"; done
+   local bios_modules=(
+       bios/com32/menu/vesamenu.c32            # VESA graphics menu
+       bios/com32/lib/libcom32.c32             # VESA graphics menu dependency
+       bios/com32/libutil/libutil.c32          # VESA graphics menu dependency
+   )
+   # EFI 32-bit (not supported yet)
+   local efi32_loaders=(
+       efi32/efi/syslinux.efi
+       efi32/com32/elflink/ldlinux/ldlinux.e32
+   )
+   local efi32_modules=(
+       efi32/com32/menu/vesamenu.c32
+       efi32/com32/lib/libcom32.c32
+       efi32/com32/libutil/libutil.c32
+   )
+   # EFI 64-bit (not supported yet)
+   local efi64_loaders=(
+       efi64/efi/syslinux.efi
+       efi64/com32/elflink/ldlinux/ldlinux.e64
+   )
+   local efi64_modules=(
+       efi64/com32/menu/vesamenu.c32
+       efi64/com32/lib/libcom32.c32
+       efi64/com32/libutil/libutil.c32
+   )
+
+   Quiet pushd "$archiveDir"
+   case "$(uname -m)" in
+       i686|x86_64)
+           mkdir -p "$installDir/isolinux/bios"
+           cp -v ${bios_loaders[@]} "$installDir/isolinux"
+           cp -v ${bios_modules[@]} "$installDir/isolinux/bios"
+           sed -i 's,__ARCH__,bios,g' "$installDir/isolinux/isolinux.cfg"
+           ;;
+       TODO_x86_64_EFI_mode)
+           # TODO: we need to create an .img file to pass to mkisofs if we are to boot using pure EFI
+           mkdir -p "$installDir/isolinux/efi64"
+           cp -v ${efi_loaders[@]} "$installDir/isolinux"
+           cp -v ${efi_modules[@]} "$installDir/isolinux/efi64"
+           sed -i 's,__ARCH__,efi64,g' "$installDir/isolinux/isolinux.cfg"
+           ;;
+       *)
+           echo "Error: unsupported architecture $(uname -m)."
+           exit 1
+           ;;
+   esac
+   
+   # Boot logo
    utils/ppmtolss16 < "$ppmFile" > "$installDir/isolinux/gobo.lss"
-   cp -v bios/linux/syslinux "$installDir/syslinux"
+
    Quiet popd
 }
 
