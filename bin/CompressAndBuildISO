@@ -391,5 +391,7 @@ then
    Quiet popd   
    iso_name="Output/GoboLinux-NoVersion.iso"
    time nice -20 mkisofs -R -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table Output/ISO  > $iso_name
+   isohybrid_cmd=$(ls TemporaryBuild/syslinux-*/bios/utils/isohybrid | head -n 1)
+   $isohybrid_cmd "$iso_name"
    echo "=> ISO stage done"
 fi
