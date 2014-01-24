@@ -97,6 +97,15 @@ function BuildISOLINUX() {
    esac
    # Build
    make $makeFlags
+   Quiet popd
+}
+
+function InstallISOLINUX() {
+   local archiveDir="$1"
+   local installDir="$2"
+   local ppmFile="$3"
+   
+   Quiet pushd "$archiveDir"
    modules32=(
        bios/core/lpxelinux.0
        bios/core/isolinux.bin
@@ -146,7 +155,8 @@ then
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls syslinux*.tar.xz | tail -n1))"
    Quiet popd
-   BuildISOLINUX "$builddir/$archiveDir" "$output/ISO" "$ppmfile"
+   # BuildISOLINUX "$builddir/$archiveDir" "$output/ISO" "$ppmfile"  # We are using the executables shipped with isolinux
+   InstallISOLINUX "$builddir/$archiveDir" "$output/ISO" "$ppmfile"
 fi
 
 # Build BusyBox
