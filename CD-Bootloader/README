@@ -7,9 +7,9 @@ This CD is compressed as a set of SquashFS images. To access its contents:
   * Alternatively, you may boot from the CD.  This uses the ISOLINUX
     bootloader.
 
-  * In addition, you can help test the LiveFlash option.  Please see
-    README.USB for more information.  The LiveFlash is currently in beta
-    and has received limited testing.  This uses the SYSLINUX bootloader.
+  * In addition, you may boot from USB flash devices by copying the ISO file to
+    the flash device using a tool such as 'dd':
+    $ dd if=GoboLinux-015-x86_64.iso of=/dev/<flash_device>
 
 
 For more information about SquashFS, see
