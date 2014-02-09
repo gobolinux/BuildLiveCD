@@ -56,7 +56,6 @@ localsvn=$root/LocalSVN
 packages=$root/Packages
 datadir="$livecdDataDir"
 arch=$(ls $packages/*.bz2 | tail -n1 | sed 's,\(.*\)--\(.*\)--\(.*\).tar.bz2,\3,g')
-echo "ARCH is $arch"
 
 unset usesystemindex
 [ "$livecdUseSystemIndex" = "true" ] && usesystemindex="true"
@@ -126,6 +125,17 @@ then
 
    unset buildrootopts
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
+
+   # Remove old snapshots of the GoboLinux packages from ROLayer
+   cat "$datadir/Packages-List-GoboLinuxTools-SVN" | while read pkg
+   do
+      ls "Output/ROLayer/Programs/$pkg/" | grep -v "Settings\|Current\|$today" | while read pkgversion
+      do
+         Log_Terse "Removing old snapshot $pkgversion from $pkg"
+         rm -rf -- "Output/ROLayer/Programs/$pkg/$pkgversion"
+      done
+   done
+
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
    
    echo
