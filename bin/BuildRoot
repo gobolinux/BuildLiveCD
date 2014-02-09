@@ -170,6 +170,11 @@ function install_package() {
       if [ "`program_md5 $name $version`" =  "$packagemd5" ]
       then
          Log_Normal "Keeping $name $version..."
+         if [ ! -e "$root/Programs/$name/Current" ]
+         then
+            # Create missing symlink
+            ln -nfs $version $root/Programs/$name/Current
+         fi
 
          # just keep package: md5 matches last installation
          return
@@ -229,7 +234,6 @@ Log_Normal "BuildRoot: Building root $root..."
 #
 # Base Directories
 #
-superuser=0
 Create_Filesystem_Tree $root gobo $usesystemindex
 Create_Device_Nodes $root
 
