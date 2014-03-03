@@ -148,8 +148,13 @@ do
    cd "$rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
    modpath="$(find -name ${module}.ko)"
    popd &>/dev/null
-   mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${modpath})"
-   cp --remove-destination $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath} $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath}
+   if [ ! -z "$modpath" ]
+   then
+      mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${modpath})"
+      cp --remove-destination \
+         $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath} \
+         $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath}
+   fi
 done
 
 depmod -b "${root}" ${kernelversion}-Gobo
