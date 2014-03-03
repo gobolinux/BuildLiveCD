@@ -89,7 +89,6 @@ then
    for package in $tools 
    do
       tarball=$package--${today}-SVN--$arch.tar.bz2
-
       if [ ! -e "$tarball" -o "`find "$localsvn/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
       then
          echo "Packing $package SVN snapshot..."

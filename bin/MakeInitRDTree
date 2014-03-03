@@ -46,6 +46,32 @@ packages=(
 )
 
 kernel_modules=(
+    lpc-ich
+    ehci-pci
+    ohci-pci
+    sdhci-pci
+    usb-storage
+    usb-common
+    usbcore
+    bcma-hcd
+    ehci-hcd
+    fotg210-hcd
+    fusbh200-hcd
+    isp116x-hcd
+    isp1362-hcd
+    ohci-hcd
+    oxu210hp-hcd
+    r8a66597-hcd
+    sl811-hcd
+    ssb-hcd
+    u132-hcd
+    ufshcd-pci
+    ufshcd-pltfrm
+    ufshcd
+    uhci-hcd
+    vhci-hcd
+    whci-hcd
+    xhci-hcd
 )
 
 cd $root
