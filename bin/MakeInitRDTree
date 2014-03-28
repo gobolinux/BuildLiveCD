@@ -47,31 +47,29 @@ packages=(
 
 kernel_modules=(
     lpc-ich
-    ehci-pci
-    ohci-pci
-    sdhci-pci
+    ehci
+    ohci
+    sdhci
     usb-storage
     usb-common
     usbcore
-    bcma-hcd
-    ehci-hcd
-    fotg210-hcd
-    fusbh200-hcd
-    isp116x-hcd
-    isp1362-hcd
-    ohci-hcd
-    oxu210hp-hcd
-    r8a66597-hcd
-    sl811-hcd
-    ssb-hcd
-    u132-hcd
-    ufshcd-pci
-    ufshcd-pltfrm
+    bcma
+    fotg210
+    fusbh200
+    mmc_block
+    mmc_core
+    isp116x
+    isp1362
+    oxu210hp
+    r8a66597
+    sl811
+    ssb
+    u132
     ufshcd
-    uhci-hcd
-    vhci-hcd
-    whci-hcd
-    xhci-hcd
+    uhci
+    vhci
+    whci
+    xhci
 )
 
 cd $root
@@ -146,14 +144,17 @@ for module in "${kernel_modules[@]}"
 do
    [ -z "$module" ] && continue
    cd "$rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
-   modpath="$(find -name ${module}.ko)"
+   modpath=$(find -name "${module}*.ko")
    popd &>/dev/null
    if [ ! -z "$modpath" ]
    then
-      mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${modpath})"
-      cp --remove-destination \
-         $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath} \
-         $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${modpath}
+      for mod in ${modpath[@]}
+      do
+         mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${mod})"
+         cp --remove-destination \
+            $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${mod} \
+            $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${mod}
+      done
    fi
 done
 
