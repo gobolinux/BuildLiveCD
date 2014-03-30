@@ -194,7 +194,8 @@ fi
 # Build ISOLINUX
 if [ ! -e "$output/ISO/isolinux/isolinux.bin" ]
 then
-   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/" "syslinux" "tar.xz"
+   #DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/" "syslinux" "tar.xz"
+   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/Testing/6.03" "syslinux" "tar.xz"
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls syslinux*.tar.xz | tail -n1))"
    Quiet popd
