@@ -166,7 +166,7 @@ depmod -b "${root}" ${kernelversion}-Gobo
 
 cat <<EOF > $root/System/Settings/fstab
 /dev/ram0       /               ext2    defaults         
-/proc           /System/Kernel/Status           proc    defaults
+none            /proc           proc    defaults
 EOF
 
 cat <<EOF > $root/System/Settings/group
@@ -212,7 +212,7 @@ export TERM PATH PS1 PS2
 date +"%d/%m %H:%M:%S"
 alias l='ls -l'
 
-if [ $TTY=="/System/Kernel/Devices/tty4" ]
+if [ "$(basename $TTY)" = "tty4" ]
 then
    /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
 else
@@ -222,11 +222,8 @@ EOF
 
 cat <<EOF > $root/System/Settings/rc
 #!/bin/ash
-
 /bin/mount -av
-
 /bin/startGoboLinux 
-
 EOF
 chmod +x $root/System/Settings/rc
 
