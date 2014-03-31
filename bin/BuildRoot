@@ -122,6 +122,7 @@ function symlink_program() {
       do_link ${full_path}/Resources/Wrappers ${goboindex}/bin
       do_link ${full_path}/Resources/Tasks ${gobolinks}/Tasks
       do_link ${full_path}/lib ${goboindex}/lib
+      do_link ${full_path}/libexec ${goboindex}/libexec
       #do_link ${full_path}/lib64 ${goboindex}/lib64
       do_link ${full_path}/man ${goboindex}/share/man
       do_link ${full_path}/info ${goboindex}/share/info
@@ -306,7 +307,7 @@ Log_Normal "Running ldconfig"
 ldconfig -r ${root}
 
 # SymlinkProgram --relative is not perfect yet, but, ideally, we should call the following command
-Log_Normal "Checking for broken links at ${root}/System/Links/"
-find ${root}/System/Links/ | RemoveBroken
+Log_Normal "Checking for broken links at ${root}/System/Links/ and ${root}/System/Index"
+find ${root}/System/Links/ ${root}/System/Index | RemoveBroken
 
 exit 0

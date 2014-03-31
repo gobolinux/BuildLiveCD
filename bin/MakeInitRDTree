@@ -203,7 +203,7 @@ EOF
 
 cat <<EOF > $root/System/Settings/profile
 TERM=linux
-PATH="/System/Links/Executables"
+PATH="/System/Index/bin"
 #PS1="\w>$"
 PS1='\[\033[1;33;41m\]RAMdisk\[\033[1;31;49m\] \w]\[\033[0m\]'
 PS2='> '
