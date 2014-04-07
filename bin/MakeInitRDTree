@@ -212,7 +212,7 @@ export TERM PATH PS1 PS2
 date +"%d/%m %H:%M:%S"
 alias l='ls -l'
 
-if [ "$(basename $TTY)" = "tty4" ]
+if [ "\$(basename \$TTY)" = "tty4" ]
 then
    /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
 else
