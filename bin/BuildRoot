@@ -259,7 +259,7 @@ fi
 
 for list in ${packagelist[@]}
 do
-   Log_Normal "Installing packages from $list"
+   Log_Terse "Installing packages from $list"
    cat $list | while read line
    do
       name=$(echo $line | awk {'print $1'})

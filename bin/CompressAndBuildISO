@@ -128,7 +128,7 @@ then
    # Remove old snapshots of the GoboLinux packages from ROLayer
    cat "$datadir/Packages-List-GoboLinuxTools-SVN" | while read pkg
    do
-      ls "Output/ROLayer/Programs/$pkg/" | grep -v "Settings\|Current\|$today" | while read pkgversion
+      ls "Output/ROLayer/Programs/$pkg/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
       do
          Log_Terse "Removing old snapshot $pkgversion from $pkg"
          rm -rf -- "Output/ROLayer/Programs/$pkg/$pkgversion"
