@@ -109,27 +109,33 @@ function do_link() {
 function symlink_program() {
    full_path="$1"
    root=`readlink -f $2`
-   gobolinks=/System/Links
+   gobosystem=/System
+   gobolinks=${gobosystem}/Links
    goboindex=/usr
    name=$(basename $(dirname $full_path))
    version=$(basename ${full_path})
-   #echo "Linking ${full_path} inside ${gobolinks}" 1>&2
    
    if [ "$usesystemindex" ]
    then
+      goboenvironment=${gobosystem}/Environment
       do_link ${full_path}/bin ${goboindex}/bin
       do_link ${full_path}/sbin ${goboindex}/bin
       do_link ${full_path}/Resources/Wrappers ${goboindex}/bin
-      do_link ${full_path}/Resources/Tasks ${gobolinks}/Tasks
+      do_link ${full_path}/Resources/Tasks ${gobosystem}/Tasks
       do_link ${full_path}/lib ${goboindex}/lib
       do_link ${full_path}/libexec ${goboindex}/libexec
       #do_link ${full_path}/lib64 ${goboindex}/lib64
       do_link ${full_path}/man ${goboindex}/share/man
       do_link ${full_path}/info ${goboindex}/share/info
       do_link ${full_path}/include ${goboindex}/include
-      do_link ${full_path}/../Settings ${gobolinks}/../Settings
+      do_link ${full_path}/../Settings ${gobosystem}/Settings
       do_link ${full_path}/share ${goboindex}/share
+
+      [ -f "${root}${full_path}/Resources/Environment" ] && \
+      ln -nfs ../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
+      ln -nfs $version ${root}$(dirname ${full_path})/Current
    else
+      goboenvironment=${gobolinks}/Environment
       do_link ${full_path}/bin ${gobolinks}/Executables
       do_link ${full_path}/sbin ${gobolinks}/Executables
       do_link ${full_path}/Resources/Wrappers ${gobolinks}/Executables
@@ -140,11 +146,12 @@ function symlink_program() {
       do_link ${full_path}/include ${gobolinks}/Headers
       do_link ${full_path}/../Settings ${gobolinks}/../Settings
       do_link ${full_path}/Shared ${gobolinks}/Shared
+
+      [ -f "${root}${full_path}/Resources/Environment" ] && \
+      ln -nfs ../../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
+      ln -nfs $version ${root}$(dirname ${full_path})/Current
    fi
 
-   [ -f "${root}${full_path}/Resources/Environment" ] && \
-   ln -nfs ../../../Programs/${name}/${version}/Resources/Environment ${root}${gobolinks}/Environment/${name}--${version}
-   ln -nfs $version ${root}$(dirname ${full_path})/Current
 }
 
 function program_md5() {
@@ -275,12 +282,16 @@ do
    done
 done
 
-cachefile=/System/Links/Environment/Cache
-if [ ! -e "${root}${cachefile}" -o "`find "${root}/System/Links/Environment/" -newer "${root}${cachefile}" 2> /dev/null`" ] 
+if [ "$usesystemindex" ]
+then goboenvironment="/System/Environment"
+else goboenvironment="/System/Links/Environment"
+fi
+cachefile=${goboenvironment}/Cache
+if [ ! -e "${root}${cachefile}" -o "`find "${root}${goboenvironment}/" -newer "${root}${cachefile}" 2> /dev/null`" ] 
 then
    echo "Updating ${root}${cachefile}..."
    echo -e "unset unsetvars\n[ ! \"\$goboSettings\" ] && unsetvars=true\n\nsource GoboPath\n" > ${root}${cachefile}
-   for link in ${root}/System/Links/Environment/*--*
+   for link in ${root}${goboenvironment}/*--*
    do
       if [ -e ${link} ] 
       then
@@ -290,7 +301,7 @@ then
    done
    unsetvars=(goboUserSettings goboUsers goboMount goboPrograms goboSystem goboScripts goboIndex goboManuals
               goboLinks goboExecutables goboLibraries goboHeaders goboShared goboVariable goboSettings goboKernel
-              goboDaemons goboTasks goboEnvironment goboTemp goboBoot goboDevices goboStatus goboObjects
+              goboTasks goboEnvironment goboTemp goboBoot goboDevices goboStatus goboObjects
               goboModules goboInstall)
 
    echo -e "if [ \"\$unsetvars\" ]\nthen" >> ${root}${cachefile}
@@ -300,14 +311,19 @@ then
    done
    echo -e "fi\n" >> ${root}${cachefile}
 else
-   echo "Keeping ${root}/System/Links/Environment/Cache"
+   echo "Keeping ${root}${goboenvironment}/Cache"
 fi
 
 Log_Normal "Running ldconfig"
 ldconfig -r ${root}
 
 # SymlinkProgram --relative is not perfect yet, but, ideally, we should call the following command
-Log_Normal "Checking for broken links at ${root}/System/Links/ and ${root}/System/Index"
-find ${root}/System/Links/ ${root}/System/Index | RemoveBroken
-
+if [ "$usesystemindex" ]
+then
+   Log_Normal "Checking for broken links at ${root}/System/Index"
+   find ${root}/System/Index/ | RemoveBroken
+else
+   Log_Normal "Checking for broken links at ${root}/System/Links/"
+   find ${root}/System/Links/ | RemoveBroken
+fi
 exit 0
