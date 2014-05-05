@@ -5,7 +5,7 @@ function write_file() {
 }
 
 write_file GoboLinuxVersion <<EOF
-015.beta3
+015
 EOF
 
 write_file gobo <<EOF
