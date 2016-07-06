@@ -88,13 +88,13 @@ then
    cd "$packages"
    for package in $tools 
    do
-      tarball=$package--${today}-Git--$arch.tar.bz2
+      tarball=$package--${today}-GIT--$arch.tar.bz2
       if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
       then
          echo "Packing $package Git snapshot..."
          rm -rf $package                    # only required if there are leftovers from a previous execution
          mkdir -p $package
-         cp -a $localgit/tools/$package $package/${today}-Git
+         cp -a $localgit/tools/$package $package/${today}-GIT
 
          # paranoia check
          if [ "$arch" != "$(uname -m)" ]
@@ -106,10 +106,10 @@ then
          fi
 
          # we need to build here in order to create the files which are going to be linked inside BuildRoot
-         [ -e $package/${today}-Git/Makefile ] && echo Building $package/${today}-Git && make -C $package/${today}-Git > /dev/null 
-         find $package/${today}-Git/ -type d -name .git | xargs rm -rf
+         [ -e $package/${today}-GIT/Makefile ] && echo Building $package/${today}-GIT && make -C $package/${today}-GIT > /dev/null 
+         find $package/${today}-GIT/ -type d -name .git | xargs rm -rf
          rm -f $package--*--$arch.tar.bz2   # cleaning up old versions too
-         tar cjpf $tarball $package/${today}-Git  # create the package
+         tar cjpf $tarball $package/${today}-GIT  # create the package
          rm -rf $package
          toolswhichneedmake="$toolswhichneedmake $package"
       else
@@ -142,11 +142,11 @@ then
    for package in $tools 
    do
       # we build the tools again to ensure they are prepared to the LiveCD environment
-      if [ -e Output/ROLayer/Programs/$package/${today}-Git/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
+      if [ -e Output/ROLayer/Programs/$package/${today}-GIT/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
       then 
          echo "Rebuilding $package..." 
-         chroot Output/ROLayer make -C Programs/$package/${today}-Git/ clean  
-         chroot Output/ROLayer make -C Programs/$package/${today}-Git/        
+         chroot Output/ROLayer make -C Programs/$package/${today}-GIT/ clean
+         chroot Output/ROLayer make -C Programs/$package/${today}-GIT/
       fi
    done
 
@@ -361,16 +361,16 @@ then
    for package in InitRDScripts
    do
       echo "Packing $package Git snapshot..."
-      tarball=$package--${today}-Git--$arch.tar.bz2
+      tarball=$package--${today}-GIT--$arch.tar.bz2
       rm -rf $package
       rm -f $package--*
-      mkdir -p $package/${today}-Git
-      cp -a $localgit/tools/$package/* $package/${today}-Git
-      cd $package/${today}-Git
+      mkdir -p $package/${today}-GIT
+      cp -a $localgit/tools/$package/* $package/${today}-GIT
+      cd $package/${today}-GIT
       [ -e Makefile ] && make > /dev/null
       find -type d -name .git | xargs rm -rf 
       cd ..
-      ln -nfs ${today}-Git Current
+      ln -nfs ${today}-GIT Current
       cd ..
       rm -f $tarball
       tar cjpf $tarball $package

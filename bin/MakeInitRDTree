@@ -42,7 +42,7 @@ arch=`uname -m`
 
 packages=(
    $(basename $(ls $archives/BusyBox-InitRD--*--$arch.tar.bz2))
-   InitRDScripts--$today-Git--$arch.tar.bz2
+   InitRDScripts--$today-GIT--$arch.tar.bz2
 )
 
 kernel_modules=(
