@@ -52,7 +52,7 @@ Verify_Superuser
 
 root=$PWD
 today=`date +%Y%m%d`
-localsvn=$root/LocalSVN
+localgit=$root/LocalGit
 packages=$root/Packages
 datadir="$livecdDataDir"
 arch=$(ls $packages/*.bz2 | tail -n1 | sed 's,\(.*\)--\(.*\)--\(.*\).tar.bz2,\3,g')
@@ -72,15 +72,15 @@ if [ "$start_at" -le "$STAGE_ROLAYER" ] && [ "$stop_at" -ge "$STAGE_ROLAYER" ]
 then
    echo "=> ROLayer stage started"
 
-   if ! [ -e LocalSVN -a -e Packages -a -e Archives ]
+   if ! [ -e LocalGit -a -e Packages -a -e Archives ]
    then
       echo 'Basic directories could not be found.'
       echo 'Please check if you are running the script inside a directory populated by UpdateEnviromnent'
       exit 1
    fi
 
-   if [ -e $datadir/Packages-List-GoboLinuxTools-SVN ]
-   then tools=`cat $datadir/Packages-List-GoboLinuxTools-SVN`
+   if [ -e $datadir/Packages-List-GoboLinuxTools-Git ]
+   then tools=`cat $datadir/Packages-List-GoboLinuxTools-Git`
    else tools=""
    fi
 
@@ -88,13 +88,13 @@ then
    cd "$packages"
    for package in $tools 
    do
-      tarball=$package--${today}-SVN--$arch.tar.bz2
-      if [ ! -e "$tarball" -o "`find "$localsvn/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
+      tarball=$package--${today}-Git--$arch.tar.bz2
+      if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
       then
-         echo "Packing $package SVN snapshot..."
+         echo "Packing $package Git snapshot..."
          rm -rf $package                    # only required if there are leftovers from a previous execution
          mkdir -p $package
-         cp -a $localsvn/tools/$package $package/${today}-SVN
+         cp -a $localgit/tools/$package $package/${today}-Git
 
          # paranoia check
          if [ "$arch" != "$(uname -m)" ]
@@ -106,14 +106,14 @@ then
          fi
 
          # we need to build here in order to create the files which are going to be linked inside BuildRoot
-         [ -e $package/${today}-SVN/Makefile ] && echo Building $package/${today}-SVN && make -C $package/${today}-SVN > /dev/null 
-         find $package/${today}-SVN/ -type d -name .svn | xargs rm -rf
+         [ -e $package/${today}-Git/Makefile ] && echo Building $package/${today}-Git && make -C $package/${today}-Git > /dev/null 
+         find $package/${today}-Git/ -type d -name .git | xargs rm -rf
          rm -f $package--*--$arch.tar.bz2   # cleaning up old versions too
-         tar cjpf $tarball $package/${today}-SVN  # create the package
+         tar cjpf $tarball $package/${today}-Git  # create the package
          rm -rf $package
          toolswhichneedmake="$toolswhichneedmake $package"
       else
-         echo "Not repacking $package SVN snapshot..."
+         echo "Not repacking $package Git snapshot..."
       fi
 
    done
@@ -126,7 +126,7 @@ then
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
 
    # Remove old snapshots of the GoboLinux packages from ROLayer
-   cat "$datadir/Packages-List-GoboLinuxTools-SVN" | while read pkg
+   cat "$datadir/Packages-List-GoboLinuxTools-Git" | while read pkg
    do
       ls "Output/ROLayer/Programs/$pkg/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
       do
@@ -142,11 +142,11 @@ then
    for package in $tools 
    do
       # we build the tools again to ensure they are prepared to the LiveCD environment
-      if [ -e Output/ROLayer/Programs/$package/${today}-SVN/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
+      if [ -e Output/ROLayer/Programs/$package/${today}-Git/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
       then 
          echo "Rebuilding $package..." 
-         chroot Output/ROLayer make -C Programs/$package/${today}-SVN/ clean  
-         chroot Output/ROLayer make -C Programs/$package/${today}-SVN/        
+         chroot Output/ROLayer make -C Programs/$package/${today}-Git/ clean  
+         chroot Output/ROLayer make -C Programs/$package/${today}-Git/        
       fi
    done
 
@@ -177,23 +177,23 @@ then
       umount "${root}/Output/ROLayer/System/Aliens"
    done
 
-   echo "Coping $filesdir from LocalSVN..."
+   echo "Coping $filesdir from LocalGit..."
    # Add few items to rolayer
    for directory in Descriptions Wallpapers Fonts
    do
-      if ! diff --recursive --exclude=.svn "LocalSVN/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
+      if ! diff --recursive --exclude=.git "LocalGit/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
       then
          echo "Updating /$filesdir/$directory"
          rm -rf "Output/ROLayer/$filesdir/$directory"
-         cp -a "LocalSVN/files/$directory" "Output/ROLayer/$filesdir"
+         cp -a "LocalGit/files/$directory" "Output/ROLayer/$filesdir"
       else
          echo "Keeping $filesdir/$directory"
       fi
    done
 
-   # Clean SVN files from ROLayer
-   echo "Removing SVN files..."
-   find Output/ROLayer/$filesdir -type d -name .svn | xargs rm -rf
+   # Clean Git files from ROLayer
+   echo "Removing Git files..."
+   find Output/ROLayer/$filesdir -type d -name .git | xargs rm -rf
 
    echo "=> ROLayer stage done"
 fi
@@ -360,17 +360,17 @@ then
    cd Archives/
    for package in InitRDScripts
    do
-      echo "Packing $package SVN snapshot..."
-      tarball=$package--${today}-SVN--$arch.tar.bz2
+      echo "Packing $package Git snapshot..."
+      tarball=$package--${today}-Git--$arch.tar.bz2
       rm -rf $package
       rm -f $package--*
-      mkdir -p $package/${today}-SVN
-      cp -a $localsvn/tools/$package/* $package/${today}-SVN
-      cd $package/${today}-SVN
+      mkdir -p $package/${today}-Git
+      cp -a $localgit/tools/$package/* $package/${today}-Git
+      cd $package/${today}-Git
       [ -e Makefile ] && make > /dev/null
-      find -type d -name .svn | xargs rm -rf 
+      find -type d -name .git | xargs rm -rf 
       cd ..
-      ln -nfs ${today}-SVN Current
+      ln -nfs ${today}-Git Current
       cd ..
       rm -f $tarball
       tar cjpf $tarball $package

@@ -12,7 +12,7 @@ fi
 
 
 for i in $datadir/Packages-List-*; do
-   [ "$i" = "$datadir/Packages-List-GoboLinuxTools-SVN" ] && continue
+   [ "$i" = "$datadir/Packages-List-GoboLinuxTools-Git" ] && continue
    # Skip comments
    cat $i | cut -f1 -d' ' | grep -v "^#" | sort -u | while read packagename;
    do

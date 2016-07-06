@@ -7,14 +7,12 @@ Import GoboLinux
 if [ "$1" == "--help" ]
 then
    echo "Usage:"
-   echo "   UpdateEnvironment [ <svn-account> [ <local-account> ] ]"
+   echo "   UpdateEnvironment"
    echo
    echo "Run this on an empty directory to create the"
    echo "GoboLinux LiveCD mastering environment."
    echo "It will fetch all needed files off the network"
    echo "and create the proper directory layout."
-   echo "If you have SVN write access, pass your svn.gobolinux.org"
-   echo "username as a parameter." 
    echo
    exit 0
 fi
@@ -34,7 +32,7 @@ datadir="$livecdDataDir"
 if [ -d "$datadir" ]
 then
    Quiet pushd "$datadir"
-   [ -d .svn ] && svn up # svn doesn't need "-dP" args to create new dirs and prune empty
+   [ -d .git ] && git pull
    Quiet popd
 fi
 
@@ -188,7 +186,7 @@ if [ ! -d "$output/ISO/isolinux" ]
 then
    mkdir -p $output/ISO
    cp -R "$cdbootloaderdir/"* $output/ISO
-   find $output/ISO -name ".svn" -type d | xargs rm -rf
+   find $output/ISO -name ".git" -type d | xargs rm -rf
 fi
 
 # Build ISOLINUX
@@ -217,57 +215,44 @@ then
 fi
 
 #############################################################################
-# LocalSVN
+# LocalGit
 #############################################################################
-echo "=> Updating local SVN copy..."
+echo "=> Updating local Git copy..."
 
-if [ "$1" ]
-then
-   svnuser="$1"
-   if [ "$2" ]
-   then localuser="$2"
-   else localuser="$1"
-   fi
-else
-   svnuser=anonymous
-fi
+mkdir -p $root/LocalGit/tools
+cd $root/LocalGit/
 
-mkdir -p $root/LocalSVN/tools
-cd $root/LocalSVN/
-
-if [ -e $datadir/Packages-List-GoboLinuxTools-SVN ]
-then tools="`cat $datadir/Packages-List-GoboLinuxTools-SVN` InitRDScripts"
+if [ -e $datadir/Packages-List-GoboLinuxTools-Git ]
+then tools="`cat $datadir/Packages-List-GoboLinuxTools-Git` InitRDScripts"
 else tools="InitRDScripts"
 fi
 
-for svnrepo in $tools
+for gitrepo in $tools
 do
-   if [ -e "tools/$svnrepo" ]
+   if [ -e "tools/$gitrepo" ]
    then
-      echo "Updating $svnrepo..."
-      cd tools/$svnrepo
-      svn -q up #-dP
+      echo "Updating $gitrepo..."
+      cd tools/$gitrepo
+      git pull
       cd - &> /dev/null
    else
-      echo "Getting $svnrepo..."
-      svn -q co http://svn.gobolinux.org/tools/branches/015/$svnrepo tools/$svnrepo || \
-      svn -q co http://svn.gobolinux.org/tools/trunk/$svnrepo tools/$svnrepo
+      echo "Getting $gitrepo..."
+      pushd tools
+      git clone --branch=015 https://github.com/gobolinux/$gitrepo || \
+      git clone              https://github.com/gobolinux/$gitrepo
+      popd
    fi
 done
 
-files="Descriptions Wallpapers Fonts"
-for svnrepo in $files
-do
-   if [ -e "files/$svnrepo" ]
-   then
-      echo "Updating $svnrepo..."
-      cd files/$svnrepo
-      svn -q up #-dP
-      cd - &> /dev/null
-   else
-      echo "Getting $svnrepo..."
-      svn -q co http://svn.gobolinux.org/files/trunk/$svnrepo files/$svnrepo
-   fi
+if [ -e "files" ]
+   echo "Updating Files..."
+   cd files
+   git pull
+   cd - &> /dev/null
+else
+   echo "Getting Files..."
+   git clone https://github.com/gobolinux/Files
+   mv Files files
 done
 
 rm -rf files/Documentation

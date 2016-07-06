@@ -6,7 +6,7 @@ PACKAGE_DIR = $(HOME)
 PACKAGE_ROOT = $(PACKAGE_DIR)/$(PROGRAM)
 PACKAGE_BASE = $(PACKAGE_ROOT)/$(VERSION)
 PACKAGE_FILE = $(PACKAGE_DIR)/$(PROGRAM)--$(VERSION)--$(shell uname -m).tar.bz2
-CVSTAG=`echo $(PROGRAM)_$(VERSION) | tr "[:lower:]" "[:upper:]" | sed  's,\.,_,g'`
+TAG=`echo $(PROGRAM)_$(VERSION) | tr "[:lower:]" "[:upper:]" | sed  's,\.,_,g'`
 
 all: version_check
 
@@ -21,7 +21,7 @@ cleanup:
 	find * -path "*~" -or -path "*/.\#*" | xargs rm -f
 
 verify:
-	! { svn up 2>&1 | grep "^[\?]" | grep -v "Resources/SettingsBackup" ;}
+	! { git pull 2>&1 | grep "^[\?]" | grep -v "Resources/SettingsBackup" ;}
 
 dist: version_check cleanup verify all
 	rm -rf $(PACKAGE_ROOT)
@@ -32,8 +32,8 @@ dist: version_check cleanup verify all
 	cd $(PACKAGE_DIR); tar cvp $(PROGRAM) | bzip2 > $(PACKAGE_FILE)
 	rm -rf $(PACKAGE_ROOT)
 	@echo; echo "Package at $(PACKAGE_FILE)"
-	@echo; echo "Now run 'svn tag $(CVSTAG)' (please test)"; echo
-	! { svn up  2>&1 | grep "^M" ;}
+	@echo; echo "Now run 'git tag $(TAG)' (please test)"; echo
+	! { git pull  2>&1 | grep "^M" ;}
 
 install: version_check
 	mkdir -p $(PREFIX)
