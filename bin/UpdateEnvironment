@@ -245,6 +245,7 @@ do
 done
 
 if [ -e "files" ]
+then
    echo "Updating Files..."
    cd files
    git pull
