@@ -171,7 +171,7 @@ function BuildBusyBox() {
    if [ ! -e ".config" -o "$datadir/busybox.config" -nt ".config" ]
    then
       cp -v "$datadir/busybox.config" ".config"
-      yes | make oldconfig 
+      yes "" | make oldconfig
    fi
    GrepReplace -B "CONFIG_PREFIX=.*" "CONFIG_PREFIX=\"$installDir\"" .config
    ln -nfs "$version" "$2/Current"
@@ -193,7 +193,7 @@ fi
 if [ ! -e "$output/ISO/isolinux/isolinux.bin" ]
 then
    #DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/" "syslinux" "tar.xz"
-   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/Testing/6.03" "syslinux" "tar.xz"
+   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/Testing/6.04" "syslinux" "tar.xz"
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls syslinux*.tar.xz | tail -n1))"
    Quiet popd
@@ -204,7 +204,7 @@ fi
 # Build BusyBox
 if [ $(ls $archives/BusyBox-InitRD--* 2> /dev/null | wc -l) = 0 ]
 then
-   DownloadLatest "http://www.busybox.net/downloads/" "busybox-1" "tar.bz2"
+   DownloadLatest "http://sources.buildroot.net/" "busybox-1" "tar.bz2"
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls busybox-1*.tar.bz2 | tail -n1))"
    Quiet popd
