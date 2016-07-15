@@ -253,7 +253,7 @@ else
    echo "Getting Files..."
    git clone https://github.com/gobolinux/Files
    mv Files files
-done
+fi
 
 rm -rf files/Documentation
 
