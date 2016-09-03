@@ -17,7 +17,7 @@ Parse_Conf BuildLiveCD.conf
 export SHELL=/bin/bash
 
 tar --help | grep -q -- --overwrite || Die "Your version of tar is too old. Please upgrade."
-funionfs --version >& /dev/null || Die "Please install the funionfs package first."
+unionfs --version >& /dev/null || Die "Please install the unionfs-fuse package first."
 
 # Stages:
 STAGE_ROLAYER=0; STAGE_SQUASHFS=1; STAGE_INITRD=2; STAGE_ISO=3
@@ -221,7 +221,7 @@ then
    echo "Unionfs mounting layers."
    tmp_mp=`mktemp -d /tmp/finalize_layer-XXXXX`
    unionfs_dirs="dirs=${unionfs_dirs}:${tmp_mp}=rw"
-   funionfs ${tmp_mp} Output/Environment -o ${unionfs_dirs} || { echo Error mounting Output/Environment; exit 1; }
+   unionfs -o ${unionfs_dirs} ${tmp_mp} Output/Environment || { echo Error mounting Output/Environment; exit 1; }
 
    mkdir -p Output/Checksums
    
