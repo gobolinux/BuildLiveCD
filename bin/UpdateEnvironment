@@ -238,8 +238,7 @@ do
    else
       echo "Getting $gitrepo..."
       pushd tools
-      git clone --branch=015 https://github.com/gobolinux/$gitrepo || \
-      git clone              https://github.com/gobolinux/$gitrepo
+      git clone https://github.com/gobolinux/$gitrepo
       popd
    fi
 done
