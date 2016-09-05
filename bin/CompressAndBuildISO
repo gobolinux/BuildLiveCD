@@ -53,7 +53,7 @@ root=$PWD
 today=`date +%Y%m%d`
 localgit=$root/LocalGit
 packages=$root/Packages
-datadir="$livecdDataDir"
+datadir="$(readlink -f $(dirname $0)/../Data)"
 arch=$(ls $packages/*.bz2 | tail -n1 | sed 's,\(.*\)--\(.*\)--\(.*\).tar.bz2,\3,g')
 
 if [ "$arch" != "$(uname -m)" ]

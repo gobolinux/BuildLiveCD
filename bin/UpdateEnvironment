@@ -26,7 +26,7 @@ ppmfile="$isolinuxdir/gobolinux015.ppm"
 builddir="$PWD/TemporaryBuild"
 mkdir -p "$builddir" "$archives"
 
-datadir="$livecdDataDir"
+datadir="$(readlink -f $(dirname $0)/../Data)"
 if [ -d "$datadir" ]
 then
    Quiet pushd "$datadir"
