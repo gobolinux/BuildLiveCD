@@ -19,8 +19,8 @@ unset root
 unset packagedir
 unset usesystemindex
 
-Is_Entry "root" && root=`Entry "root"`
-Is_Entry "packagedir" && packagedir=`Entry "packagedir"`
+Is_Entry "root" && root=$(readlink -f $(Entry "root"))
+Is_Entry "packagedir" && packagedir=$(readlink -f $(Entry "packagedir"))
 Boolean "use-system-index" && usesystemindex=true
 
 # Sanity checks
@@ -273,7 +273,7 @@ else
 fi
 
 Log_Normal "Running ldconfig"
-ldconfig -r ${root}
+/usr/sbin/ldconfig -r ${root}
 
 if [ "$usesystemindex" ]
 then
