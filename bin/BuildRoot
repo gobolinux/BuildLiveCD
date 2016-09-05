@@ -19,6 +19,7 @@ unset root
 unset packagedir
 unset usesystemindex
 
+datadir="$(readlink -f $(dirname $0)/../Data)"
 Is_Entry "root" && root=$(readlink -f $(Entry "root"))
 Is_Entry "packagedir" && packagedir=$(readlink -f $(Entry "packagedir"))
 Boolean "use-system-index" && usesystemindex=true
@@ -32,8 +33,6 @@ for list in ${packagelist[@]}
 do
    [ -f "$list" ] || Die "$list does not exist"
 done
-
-datadir="${goboPrograms}/BuildLiveCD/Current/Data"
 
 Verify_Superuser
 
