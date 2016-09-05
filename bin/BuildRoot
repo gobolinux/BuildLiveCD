@@ -120,7 +120,7 @@ function install_package() {
    then vardir=/Data/Variable
    else vardir=/System/Variable
    fi
-   
+
    packagemd5=`md5sum $package`
    if [ -d "$root/Programs/$name/$version" ]
    then 
@@ -147,17 +147,17 @@ function install_package() {
       fi
    fi
    echo "$packagemd5" > "${root}"/../Checksums/$name--$version
-   
+
    Log_Normal "Installing $name $version..."
    pushd "$root/Programs" &> /dev/null
    tar xjpf "$package"
 
    # Remove empty dirs in Resources
-   for i in `find "$name/$version/Resources" -type d -empty 2> /dev/null | grep -v Variable | grep -v Settings`
+   for i in `find "$name/$version/Resources" -type d -empty 2> /dev/null | grep -v "Variable\|Settings"`
    do
        rmdir -p $i 2> /dev/null || true
    done
-   
+
    if [ ! "$usesystemindex" ]
    then
       # Fixes broken share->Shared instead of share->/System/Links/Shared
@@ -173,16 +173,9 @@ function install_package() {
       cp -rf "$dvariable"/* $root/$vardir
       ln -s $vardir "$name/Variable"
    fi
-   
-   # Handling Unmanaged files (emulating InstallPackage)
-   # This is now handled by unionfs in InitRDScripts/bin/startGoboLinux
-   #if [ -d "$name/$version/Resources/Unmanaged/" -a "$name" != "Linux" ]
-   #then
-   #   cp -fa $name/$version/Resources/Unmanaged/* ../ # warning: assuming we are under $root/Programs
-   #fi
-   
+
    popd &> /dev/null
-   
+
    # Symlink it
    (
       export PATH=$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions
@@ -282,5 +275,6 @@ else
    Log_Normal "Checking for broken links at ${root}/System/Links/"
    find ${root}/System/Links/ | $(scripts_dir)/bin/RemoveBroken
 fi
+
 remove_unpacked_scripts
 exit 0
