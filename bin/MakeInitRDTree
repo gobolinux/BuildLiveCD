@@ -1,9 +1,6 @@
 #!/bin/bash
 
-source ScriptFunctions
-Import OptionParser
-Import GoboLinux
-Import Bootstrap
+source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=no
 scriptDescription="Builds the GoboLinux LiveCD InitRD tree."
@@ -32,6 +29,10 @@ archives=$PWD/Archives/
 
 rm -rf $root
 mkdir -p $root
+
+scriptsVersion=$(ls $rolayer/Programs/Scripts/ | grep -v "Current\|Settings\|Variable")
+source $rolayer/Programs/Scripts/$scriptsVersion/Functions/Bootstrap
+
 
 ####################################################
 # Fetch packages
