@@ -1,8 +1,6 @@
 #!/bin/bash
 
-. ScriptFunctions
-Import OptionParser
-Import GoboLinux 
+source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=no
 scriptDescription="Automated program compilation tool."
