@@ -104,82 +104,6 @@ function compile_dir() {
    echo /tmp/Compile/*
 }
 
-function do_link() {
-   if [ -d "$root/$1" ]
-   then
-      pushd $root/$2 &>/dev/null
-      (
-         export verboseFD=100
-         export normalFD=101
-         export terseFD=102
-         export errorFD=103
-         export debugFD=104
-         export logFD=105
-         export questionFD=106
-         eval "exec $verboseFD>/dev/null"
-         eval "exec $normalFD>/dev/null"
-         eval "exec $terseFD<&2"
-         eval "exec $errorFD<&2"
-         eval "exec $debugFD>/dev/null"
-         eval "exec $logFD>/dev/null"
-
-         export goboPrefix=$root
-         export goboPrograms=$root/Programs 
-         $(scripts_dir)/bin/LinkOrExpandAll $root/$1 --relative --no-follow
-      )
-      popd &>/dev/null
-   fi
-}
-
-
-function symlink_program() {
-   full_path="$1"
-   root=`readlink -f $2`
-   gobosystem=/System
-   gobolinks=${gobosystem}/Links
-   goboindex=/usr
-   name=$(basename $(dirname $full_path))
-   version=$(basename ${full_path})
-   
-   if [ "$usesystemindex" ]
-   then
-      goboenvironment=${gobosystem}/Environment
-      do_link ${full_path}/bin ${goboindex}/bin
-      do_link ${full_path}/sbin ${goboindex}/bin
-      do_link ${full_path}/Resources/Wrappers ${goboindex}/bin
-      do_link ${full_path}/Resources/Tasks ${gobosystem}/Tasks
-      do_link ${full_path}/lib ${goboindex}/lib
-      do_link ${full_path}/libexec ${goboindex}/libexec
-      #do_link ${full_path}/lib64 ${goboindex}/lib64
-      do_link ${full_path}/man ${goboindex}/share/man
-      do_link ${full_path}/info ${goboindex}/share/info
-      do_link ${full_path}/include ${goboindex}/include
-      do_link ${full_path}/../Settings ${gobosystem}/Settings
-      do_link ${full_path}/share ${goboindex}/share
-
-      [ -f "${root}${full_path}/Resources/Environment" ] && \
-      ln -nfs ../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
-      ln -nfs $version ${root}$(dirname ${full_path})/Current
-   else
-      goboenvironment=${gobolinks}/Environment
-      do_link ${full_path}/bin ${gobolinks}/Executables
-      do_link ${full_path}/sbin ${gobolinks}/Executables
-      do_link ${full_path}/Resources/Wrappers ${gobolinks}/Executables
-      do_link ${full_path}/Resources/Tasks ${gobolinks}/Tasks
-      do_link ${full_path}/lib ${gobolinks}/Libraries
-      do_link ${full_path}/man ${gobolinks}/Manuals
-      do_link ${full_path}/info ${gobolinks}/Manuals/info
-      do_link ${full_path}/include ${gobolinks}/Headers
-      do_link ${full_path}/../Settings ${gobolinks}/../Settings
-      do_link ${full_path}/Shared ${gobolinks}/Shared
-
-      [ -f "${root}${full_path}/Resources/Environment" ] && \
-      ln -nfs ../../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
-      ln -nfs $version ${root}$(dirname ${full_path})/Current
-   fi
-
-}
-
 function program_md5() {
    name="$1"
    version="$2"
@@ -260,7 +184,13 @@ function install_package() {
    
    popd &> /dev/null
    
-   symlink_program /Programs/$name/$version $root
+   # Symlink it
+   (
+      export PATH=$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions
+      export goboPrefix="$root"
+      source GoboPath
+      $(scripts_dir)/bin/SymlinkProgram --relative --no-follow $name $version
+   )
 }
 
 Log_Normal "BuildRoot: Building root $root..."
@@ -345,7 +275,6 @@ fi
 Log_Normal "Running ldconfig"
 ldconfig -r ${root}
 
-# SymlinkProgram --relative is not perfect yet, but, ideally, we should call the following command
 if [ "$usesystemindex" ]
 then
    Log_Normal "Checking for broken links at ${root}/System/Index"
