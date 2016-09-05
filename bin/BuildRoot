@@ -273,7 +273,7 @@ else
 fi
 
 Log_Normal "Running ldconfig"
-/usr/sbin/ldconfig -r ${root}
+/usr/sbin/chroot ${root} ldconfig
 
 if [ "$usesystemindex" ]
 then
