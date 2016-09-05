@@ -37,25 +37,26 @@ datadir="${goboPrograms}/BuildLiveCD/Current/Data"
 
 Verify_Superuser
 
-function get_package_name() {
+function get_package_names() {
    packagename=`echo $1 | awk {'print $1'} | grep -v "^#"`
+   gitlist="$datadir/Packages-List-GoboLinuxTools-Git"
 
-   if [ -e "$datadir/Packages-List-GoboLinuxTools-Git" ] && grep -q "$packagename" "$datadir/Packages-List-GoboLinuxTools-Git"
+   if [ -e "$gitlist" ] && grep -q "$packagename" "$gitlist"
    then packagever=`date +%Y%m%d`
    else packagever=`echo $1 | awk {'print $2'} | grep -v "^#"`
    fi
-   pkg=`ls $packagedir/${packagename}--${packagever}--* 2> /dev/null || true`
-   [ -z "$pkg" ] && pkg=`ls $packagedir/${packagename}--* 2> /dev/null || true`
-   if [ -z "$pkg" ]
+   pkgs=(`ls $packagedir/${packagename}--${packagever}--* 2> /dev/null`)
+   [ -z "$pkgs" ] && pkgs=(`ls $packagedir/${packagename}--* 2> /dev/null`)
+   if [ -z "$pkgs" ]
    then
       Die "*** Package $packagename $packagever could not be filled. ***" 
    fi
-   if [ "`ls $packagedir/${packagename}--* | wc -l 2> /dev/null`" -gt 1 ]
+   if [ ${#pkgs[@]} -gt 1 ]
    then  
       Log_Terse "*** Warning: more than one version for $packagename available. ***"
    fi
 
-   echo "$pkg"
+   echo "${pkgs[@]}"
 }
 
 for list in ${packagelist[@]}
@@ -65,15 +66,15 @@ do
       # just ensure that required packages are found
       ret=`echo "$line" | awk {'print $1'}`
       [ -z "$ret" ] || echo $ret | grep -q "^#" && continue
-      get_package_name "$line" > /dev/null || exit 1
+      get_package_names "$line" > /dev/null || exit 1
    done
 done
 
 [ $? -eq 0 ] || exit 1
 
 function unpack_scripts() {
-   local scripts_package=$(get_package_name Scripts)
-   local compile_package=$(get_package_name Compile)
+   local scripts_package=$(get_package_names Scripts)
+   local compile_package=$(get_package_names Compile)
    if [ ! -d /tmp/Scripts ]
    then
       Quiet pushd /tmp
@@ -198,7 +199,7 @@ function install_package() {
    fi
    
    packagemd5=`md5sum $package`
-   if [ -d "$root/Programs/$name" ]
+   if [ -d "$root/Programs/$name/$version" ]
    then 
       if [ "`program_md5 $name $version`" =  "$packagemd5" ]
       then
@@ -304,7 +305,7 @@ do
       if echo "${version:0:1}" | grep -q "^#"
       then unset version
       fi
-      pkgs=(`get_package_name $line`)
+      pkgs=(`get_package_names $line`)
       for pkg in ${pkgs[@]}; do install_package "$pkg" "$root"; done
    done
 done
