@@ -13,6 +13,7 @@ Parse_Options "$@"
 Parse_Conf BuildLiveCD.conf
 
 export SHELL=/bin/bash
+export PATH=$PATH:/usr/sbin
 
 tar --help | grep -q -- --overwrite || Die "Your version of tar is too old. Please upgrade."
 unionfs --version >& /dev/null || Die "Please install the unionfs-fuse package first."
@@ -40,7 +41,7 @@ then
    "squashfs") stop_at=$STAGE_SQUASHFS;;
    "initrd")   stop_at=$STAGE_INITRD;;
    "iso")      stop_at=$STAGE_ISO;;
-   *)          Die "Invalid stop stage \"$(Arg 1)\""
+   *)          Die "Invalid stop stage \"$(Arg 2)\""
    esac
 else
    stop_at=$STAGE_ISO
@@ -54,6 +55,14 @@ localgit=$root/LocalGit
 packages=$root/Packages
 datadir="$livecdDataDir"
 arch=$(ls $packages/*.bz2 | tail -n1 | sed 's,\(.*\)--\(.*\)--\(.*\).tar.bz2,\3,g')
+
+if [ "$arch" != "$(uname -m)" ]
+then
+   echo "Error: some GoboLinux tools packages must be compiled on demand, but the current"
+   echo "architecture ($(uname -m)) differs from that targeted by the tarballs stored in"
+   echo "the Packages directory ($(arch))."
+   exit 1
+fi
 
 unset usesystemindex
 [ "$livecdUseSystemIndex" = "true" ] && usesystemindex="true"
@@ -90,25 +99,13 @@ then
       if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
       then
          echo "Packing $package Git snapshot..."
-         rm -rf $package                    # only required if there are leftovers from a previous execution
+         rm -rf -- $package                    # only required if there are leftovers from a previous execution
          mkdir -p $package
          cp -a $localgit/tools/$package $package/${today}-GIT
-
-         # paranoia check
-         if [ "$arch" != "$(uname -m)" ]
-         then
-            echo "Error: some GoboLinux tools packages must be compiled on demand, but the current"
-            echo "architecture ($(uname -m)) differs from that targeted by the tarballs stored in"
-            echo "the Packages directory ($(arch))."
-            exit 1
-         fi
-
-         # we need to build here in order to create the files which are going to be linked inside BuildRoot
-         [ -e $package/${today}-GIT/Makefile ] && echo Building $package/${today}-GIT && make -C $package/${today}-GIT > /dev/null 
          find $package/${today}-GIT/ -type d -name .git | xargs rm -rf
          rm -f $package--*--$arch.tar.bz2   # cleaning up old versions too
          tar cjpf $tarball $package/${today}-GIT  # create the package
-         rm -rf $package
+         rm -rf -- $package
          toolswhichneedmake="$toolswhichneedmake $package"
       else
          echo "Not repacking $package Git snapshot..."
