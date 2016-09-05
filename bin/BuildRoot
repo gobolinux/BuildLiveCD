@@ -1,10 +1,6 @@
 #!/bin/bash
 
-source ScriptFunctions
-Import OptionParser
-Import GoboLinux
-Import Bootstrap
-Import Array
+source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=yes
 scriptDescription="Automated program compilation tool."
@@ -14,9 +10,10 @@ scriptUsage="<program> <options> -- <packagelist1> [packagelist2] ..."
 Add_Option_Entry "r" "root" "Root directory to populate."
 Add_Option_Entry "p" "packagedir" "Directory containing the binary packages."
 Add_Option_Boolean "i" "use-system-index" "Generate a tree using the /System/Index layout."
-
 Parse_Options "$@"
-eval `Args_To_Array packagelist`
+
+# Extra arguments go to the packagelist array
+eval `Args_To_Array packagelist $@`
 
 unset root
 unset packagedir
@@ -26,6 +23,7 @@ Is_Entry "root" && root=`Entry "root"`
 Is_Entry "packagedir" && packagedir=`Entry "packagedir"`
 Boolean "use-system-index" && usesystemindex=true
 
+# Sanity checks
 [ -z "$root" ] && Die "root option must be set."
 [ -z "$packagedir" ] && Die "packagedir option must be set."
 [ -d "$packagedir" ] || Die "$packagedir does not exist"
@@ -37,12 +35,7 @@ done
 
 datadir="${goboPrograms}/BuildLiveCD/Current/Data"
 
-if [ "$UID" != "0" ]
-then
-    Log_Terse "Running as superuser."
-    exec sudo -u "#0" $0 $*
-fi
-
+Verify_Superuser
 
 function get_package_name() {
    packagename=`echo $1 | awk {'print $1'} | grep -v "^#"`
@@ -78,6 +71,38 @@ done
 
 [ $? -eq 0 ] || exit 1
 
+function unpack_scripts() {
+   local scripts_package=$(get_package_name Scripts)
+   local compile_package=$(get_package_name Compile)
+   if [ ! -d /tmp/Scripts ]
+   then
+      Quiet pushd /tmp
+      tar xjpf "$scripts_package"
+      tar xjpf "$compile_package"
+      Quiet popd
+
+      # Prepare the Scripts package so we can symlink programs
+      GrepReplace 'conflocations=(' \
+                  'conflocations=( "$(dirname $scriptPath)/Resources/Defaults/Settings/Scripts"' \
+                  $(scripts_dir)/Functions/GoboLinux
+      make -C $(scripts_dir)/src
+      mv $(compile_dir)/bin/PrepareProgram $(scripts_dir)/bin
+      rm -rf /tmp/Compile
+   fi
+}
+
+function remove_unpacked_scripts() {
+   rm -rf /tmp/Scripts
+}
+
+function scripts_dir() {
+   echo /tmp/Scripts/*
+}
+
+function compile_dir() {
+   echo /tmp/Compile/*
+}
+
 function do_link() {
    if [ -d "$root/$1" ]
    then
@@ -99,7 +124,7 @@ function do_link() {
 
          export goboPrefix=$root
          export goboPrograms=$root/Programs 
-         LinkOrExpandAll $root/$1 --relative --no-follow
+         $(scripts_dir)/bin/LinkOrExpandAll $root/$1 --relative --no-follow
       )
       popd &>/dev/null
    fi
@@ -242,7 +267,9 @@ Log_Normal "BuildRoot: Building root $root..."
 #
 # Base Directories
 #
-Create_Filesystem_Tree $root gobo $usesystemindex
+unpack_scripts
+source $(scripts_dir)/Functions/Bootstrap
+Create_Filesystem_Tree $root 0 $usesystemindex
 Create_Device_Nodes $root
 
 #
@@ -321,9 +348,10 @@ ldconfig -r ${root}
 if [ "$usesystemindex" ]
 then
    Log_Normal "Checking for broken links at ${root}/System/Index"
-   find ${root}/System/Index/ | RemoveBroken
+   find ${root}/System/Index/ | $(scripts_dir)/bin/RemoveBroken
 else
    Log_Normal "Checking for broken links at ${root}/System/Links/"
-   find ${root}/System/Links/ | RemoveBroken
+   find ${root}/System/Links/ | $(scripts_dir)/bin/RemoveBroken
 fi
+remove_unpacked_scripts
 exit 0
