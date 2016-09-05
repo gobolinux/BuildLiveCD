@@ -216,7 +216,7 @@ then
    echo "Unionfs mounting layers."
    tmp_mp=`mktemp -d /tmp/finalize_layer-XXXXX`
    unionfs_dirs="dirs=${unionfs_dirs}:${tmp_mp}=rw"
-   unionfs -o ${unionfs_dirs} ${tmp_mp} Output/Environment || { echo Error mounting Output/Environment; exit 1; }
+   unionfs -o cow,${unionfs_dirs} Output/Environment || { echo Error mounting Output/Environment; exit 1; }
 
    mkdir -p Output/Checksums
    
