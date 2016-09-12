@@ -140,8 +140,8 @@ then
       if [ -e Output/ROLayer/Programs/$package/${today}-GIT/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
       then 
          echo "Rebuilding $package..." 
-         chroot Output/ROLayer make -C Programs/$package/${today}-GIT/ clean
-         chroot Output/ROLayer make -C Programs/$package/${today}-GIT/
+         chroot Output/ROLayer /bin/make -C Programs/$package/${today}-GIT/ clean
+         chroot Output/ROLayer /bin/make -C Programs/$package/${today}-GIT/
       fi
    done
 
@@ -379,7 +379,7 @@ then
 
    echo "Copying isolinux/kernel from Output/ROLayer/System/Kernel/Boot/kernel"
    cp --remove-destination Output/ROLayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel Output/ISO/isolinux/kernel
-   mkfs.cramfs $initrd_dir Output/ISO/isolinux/initrd
+   /sbin/mkfs.cramfs $initrd_dir Output/ISO/isolinux/initrd
    echo "=> InitRD stage done"
 fi
 
@@ -394,7 +394,7 @@ then
    md5sum isolinux/kernel isolinux/initrd *.squashfs >md5sums
    Quiet popd   
    iso_name="Output/GoboLinux-NoVersion.iso"
-   time nice -20 mkisofs -R -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table Output/ISO  > $iso_name
+   time nice -20 mkisofs -R -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -input-charset utf-8 Output/ISO  > $iso_name
    isohybrid_cmd=$(ls TemporaryBuild/syslinux-*/bios/utils/isohybrid | head -n 1)
    $isohybrid_cmd "$iso_name"
    echo "=> ISO stage done"
