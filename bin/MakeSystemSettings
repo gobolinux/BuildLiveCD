@@ -5,7 +5,7 @@ function write_file() {
 }
 
 write_file GoboLinuxVersion <<EOF
-015
+016
 EOF
 
 write_file gobo <<EOF
@@ -15,9 +15,9 @@ EOF
 touch -t 200203200151 gobo
 
 write_file group <<EOF
-gobo:x:0:
+root:x:0:
 bin:x:1:
-sys:x:2:gobo
+sys:x:2:root
 kmem:x:3:
 tty:x:4:
 tape:x:5:
@@ -51,7 +51,7 @@ mail:x:111:
 postgres:x:112:
 clamav:x:113:
 cyrus-imapd:x:114:
-plugdev:x:115:gobo
+plugdev:x:115:root
 shadow:x:116:
 lpadmin:x:118:
 EOF
@@ -63,7 +63,7 @@ write_file hosts <<EOF
 EOF
 
 write_file passwd <<EOF
-gobo:x:0:0:SuperUser:/Users/gobo:/bin/zsh
+root:x:0:0:SuperUser:/Users/root:/bin/zsh
 nobody:x:12:12:nobody:/tmp:
 mail:x:8:12:mail:/:
 news:x:9:13:news:/usr/lib/news:
@@ -90,7 +90,7 @@ nameserver 208.67.220.220
 EOF
 
 write_file shadow <<EOF
-gobo:aSt9IU/wQKWM2:13184::::::
+root:aSt9IU/wQKWM2:13184::::::
 nobody:*:9797:0:::::
 uucp:*:9797:0:::::
 ftp:!:12105:0:99999:7:::
@@ -115,8 +115,8 @@ none /dev/pts devpts defaults 0 0
 none /Data/Variable/run tmpfs defaults 0 0
 
 # Bind-mounts.
-/sys  /System/Kernel/Objects none  rbind  0 0
-/dev  /System/Kernel/Devices none  rbind  0 0
-/proc /System/Kernel/Status  none  rbind  0 0
-
+/sys         /System/Kernel/Objects none  rbind  0 0
+/dev         /System/Kernel/Devices none  rbind  0 0
+/proc        /System/Kernel/Status  none  rbind  0 0
+/lib/modules /System/Kernel/Modules none  bind   0 0
 EOF
