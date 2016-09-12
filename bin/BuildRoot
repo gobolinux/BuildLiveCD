@@ -177,12 +177,9 @@ function install_package() {
    popd &> /dev/null
 
    # Symlink it
-   (
-      export PATH=$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions
-      export goboPrefix="$root"
-      source GoboPath
-      $(scripts_dir)/bin/SymlinkProgram --relative --no-follow $name $version
-   )
+   goboPrefix="$root" \
+   PATH="$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions" \
+   $(scripts_dir)/bin/SymlinkProgram --relative --no-follow --unmanaged=install $name $version
 }
 
 Log_Normal "BuildRoot: Building root $root..."
