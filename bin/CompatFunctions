@@ -19,9 +19,14 @@ Setup_FileDescriptors() {
    terseFD=3
    verboseFD=4
    debugFD=5
-   exec 3<> /dev/stderr
-   exec 4<> /dev/stderr
-   exec 5<> /dev/stderr
+   # close
+   eval "exec $terseFD>&-"
+   eval "exec $verboseFD>&-"
+   eval "exec $debugFD>&-"
+   # dup stderr
+   eval "exec $terseFD<&2"
+   eval "exec $verboseFD<&2"
+   eval "exec $debugFD<&2"
 }
 
 Setup_FileDescriptors
