@@ -189,7 +189,7 @@ Log_Normal "BuildRoot: Building root $root..."
 #
 unpack_scripts
 source $(scripts_dir)/Functions/Bootstrap
-Create_Filesystem_Tree $root 0 $usesystemindex
+Create_Filesystem_Tree $root root $usesystemindex
 Create_Device_Nodes $root
 
 #
