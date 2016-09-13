@@ -145,28 +145,32 @@ mkdir -p "${moddir}/kernel"
 # Remove symbolic link, make /lib/modules/$kernelversion a directory
 rm -f "${root}/lib/modules"
 mkdir -p "${root}/lib/modules/${kernelversion}-Gobo"
-mount -o bind "$moddir" "${root}/lib/modules/${kernelversion}-Gobo"
 
 unmanageddir="${rolayer}/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo"
+if [ "$kernel_modules" ]
+then
+   # Satisfy depmod needs
+   [ -e "${unmanageddir}/modules.order" ] && cp "${unmanageddir}/modules.order" "$moddir"
+   [ -e "${unmanageddir}/modules.builtin" ] && cp "${unmanageddir}/modules.builtin" "$moddir"
 
-for module in "${kernel_modules[@]}"
-do
-   [ -z "$module" ] && continue
-   Quiet pushd "${unmanageddir}/kernel"
-   modpath=$(find -name "${module}*.ko")
-   Quiet popd
-   if [ ! -z "$modpath" ]
-   then
-      for mod in ${modpath[@]}
+   for module in "${kernel_modules[@]}"
+   do
+      Quiet pushd "${unmanageddir}/kernel"
+      modpath=( $(find -name "${module}*.ko" -or -name "${module}*.ko.xz") )
+      Quiet popd
+      [ -z "$modpath" ] && continue
+      for mod in "${modpath[@]}"
       do
          mkdir -p "${moddir}/kernel/$(dirname ${mod})"
          cp --remove-destination \
             ${unmanageddir}/kernel/${mod} \
             ${moddir}/kernel/${mod}
       done
-   fi
-done
+   done
+fi
 
+# Depmod tries to locate files under /lib/modules
+mount -o bind "$moddir" "${root}/lib/modules/${kernelversion}-Gobo"
 /sbin/depmod -b "${root}" ${kernelversion}-Gobo
 umount "${root}/lib/modules/${kernelversion}-Gobo"
 
