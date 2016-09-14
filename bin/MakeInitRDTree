@@ -71,6 +71,7 @@ kernel_modules=(
     vhci
     whci
     xhci
+    overlay
 )
 
 cd $root
