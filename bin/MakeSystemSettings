@@ -32,6 +32,7 @@ cdrom:x:13:
 utmp:x:14:
 uucp:x:15:
 fibo:x:21:
+input:x:24:
 polkitd:x:31
 postfix:x:32:
 postdrop:x:33:postfix
