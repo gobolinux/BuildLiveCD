@@ -106,7 +106,10 @@ function compile_dir() {
 function program_md5() {
    name="$1"
    version="$2"
-   cat "${root}"/../Checksums/$name--$version 2> /dev/null | tail -1 || echo "0000"
+   if [ "$version" ]
+   then cat "${root}"/../Checksums/$name--$version 2> /dev/null | tail -1 || echo "0000"
+   else cat "${root}"/../Checksums/$name 2> /dev/null | tail -1 || echo "0000"
+   fi
 }
 
 function install_package() {
@@ -198,7 +201,7 @@ Create_Device_Nodes $root
 mkdir -p "${root}"/../Checksums/
 
 mksettings=`which MakeSystemSettings`
-if [ "`md5sum "$mksettings"`" =  "`cat "${root}/../Checksums/MakeSystemSettings" 2> /dev/null`" ]
+if [ "$(md5sum "$mksettings")" =  "$(program_md5 MakeSystemSettings)" ] && [ -e "${root}/System/Settings/GoboLinuxVersion" ]
 then
    Log_Normal "Skipping MakeSystemSettings"
 else
