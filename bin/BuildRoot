@@ -181,8 +181,26 @@ function install_package() {
 
    # Symlink it
    goboPrefix="$root" \
+   LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$root/lib" \
    PATH="$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions" \
-   $(scripts_dir)/bin/SymlinkProgram --relative --no-follow --unmanaged=install $name $version
+   $(scripts_dir)/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=install --no-requirements $name $version 4> /dev/null
+}
+
+function process_requirements() {
+   package=`readlink -f "$1"`
+   root="$2"
+   base=$(basename $package)
+   name=${base%%--*}
+   packageversion=${base#*--}
+   version=`echo ${packageversion%%--*} | sed -r 's/-r[0-9]+(p[0-9]+)?$//g'`
+   if [ -e "$root/Programs/$name/$version/Resources/Requirements" ]
+   then
+      (
+         export goboDevices=/dev
+         export goboStatus=/proc
+         yes "" | Run_Requirements_Wrapper "/Programs/$name/$version" "$root"
+      )
+   fi
 }
 
 Log_Normal "BuildRoot: Building root $root..."
@@ -192,6 +210,7 @@ Log_Normal "BuildRoot: Building root $root..."
 #
 unpack_scripts
 source $(scripts_dir)/Functions/Bootstrap
+source $(scripts_dir)/Functions/Requirements
 Create_Filesystem_Tree $root root $usesystemindex
 Create_Device_Nodes $root
 
@@ -214,10 +233,11 @@ else
    md5sum "$mksettings" > "${root}/../Checksums/MakeSystemSettings"
 fi
 
+installed_packages=""
 for list in ${packagelist[@]}
 do
-   Log_Terse "Installing packages from $list"
-   cat $list | while read line
+   Log_Normal "Installing packages from $list"
+   for line in $(cat $list)
    do
       name=$(echo $line | awk {'print $1'})
       version=$(echo $line | awk {'print $2'})
@@ -228,8 +248,16 @@ do
       then unset version
       fi
       pkgs=(`get_package_names $line`)
-      for pkg in ${pkgs[@]}; do install_package "$pkg" "$root"; done
+      for pkg in ${pkgs[@]}
+      do
+         install_package "$pkg" "$root"
+         installed_packages="$installed_packages $pkg"
+      done
    done
+done
+for pkg in $installed_packages
+do
+   process_requirements "$pkg" "$root"
 done
 
 if [ "$usesystemindex" ]
