@@ -72,6 +72,25 @@ then filesdir=Data
 else filesdir=Files
 fi
 
+function create_gobo_package() {
+   local package="$1"
+   local tarball=$package--${today}-GIT--$arch.tar.bz2
+   if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
+   then
+      echo "Packing $package Git snapshot..."
+      rm -rf -- $package                    # only required if there are leftovers from a previous execution
+      mkdir -p $package
+      cp -a $localgit/tools/$package $package/${today}-GIT
+      find $package/${today}-GIT/ -type d -name .git | xargs rm -rf
+      rm -f $package--*--$arch.tar.bz2         # cleaning up old versions too
+      tar cjpf $tarball $package/${today}-GIT  # create the package
+      rm -rf -- $package
+      toolswhichneedmake="$toolswhichneedmake $package"
+   else
+      echo "Not repacking $package Git snapshot..."
+   fi
+}
+
 #############################################################################
 # ROLayer
 #############################################################################
@@ -95,41 +114,22 @@ then
    cd "$packages"
    for package in $tools 
    do
-      tarball=$package--${today}-GIT--$arch.tar.bz2
-      if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
-      then
-         echo "Packing $package Git snapshot..."
-         rm -rf -- $package                    # only required if there are leftovers from a previous execution
-         mkdir -p $package
-         cp -a $localgit/tools/$package $package/${today}-GIT
-         find $package/${today}-GIT/ -type d -name .git | xargs rm -rf
-         rm -f $package--*--$arch.tar.bz2   # cleaning up old versions too
-         tar cjpf $tarball $package/${today}-GIT  # create the package
-         rm -rf -- $package
-         toolswhichneedmake="$toolswhichneedmake $package"
-      else
-         echo "Not repacking $package Git snapshot..."
-      fi
+      # Create a binary package of the GoboLinux tool
+      create_gobo_package "$package"
 
+      # Remove old snapshots of the GoboLinux packages from ROLayer
+      ls "${root}/Output/ROLayer/Programs/$package/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
+      do
+         Log_Terse "Removing old snapshot $pkgversion from $package"
+         rm -rf -- "${root}/Output/ROLayer/Programs/$package/$pkgversion"
+      done
    done
 
    echo
    echo "Building root..."
    cd "$root"
-
    unset buildrootopts
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
-
-   # Remove old snapshots of the GoboLinux packages from ROLayer
-   cat "$datadir/Packages-List-GoboLinuxTools-Git" | while read pkg
-   do
-      ls "Output/ROLayer/Programs/$pkg/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
-      do
-         Log_Terse "Removing old snapshot $pkgversion from $pkg"
-         rm -rf -- "Output/ROLayer/Programs/$pkg/$pkgversion"
-      done
-   done
-
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
    
    echo
