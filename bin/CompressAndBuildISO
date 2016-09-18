@@ -72,6 +72,17 @@ then filesdir=Data
 else filesdir=Files
 fi
 
+function in_rolayer() {
+   local rolayer="${root}/Output/ROLayer"
+   local pythonversion=$(basename ${rolayer}/Programs/Scripts/${today}-GIT/lib/python*)
+   (
+      export "PYTHONPATH=$PYTHONPATH:/Programs/Scripts/${today}-GIT/lib/$pythonversion/site-packages"
+      export "PATH=$PATH:/Programs/Scripts/${today}-GIT/bin"
+      source "${rolayer}/Programs/Scripts/${today}-GIT/bin/GoboPath"
+      chroot "${rolayer}" "$@"
+   )
+}
+
 function create_gobo_package() {
    local package="$1"
    local tarball=$package--${today}-GIT--$arch.tar.bz2
@@ -132,6 +143,10 @@ then
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
    
+   # The Aliens script needs to import Python modules from the Scripts package
+   in_rolayer make -C Programs/Scripts/${today}-GIT/ clean
+   in_rolayer make -C Programs/Scripts/${today}-GIT/ python
+
    echo
    cd "$root"
    for package in $tools 
