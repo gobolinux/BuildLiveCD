@@ -142,24 +142,12 @@ then
    unset buildrootopts
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
-   
+
    # The Aliens script needs to import Python modules from the Scripts package
    in_rolayer make -C Programs/Scripts/${today}-GIT/ clean
    in_rolayer make -C Programs/Scripts/${today}-GIT/ python
 
    echo
-   cd "$root"
-   for package in $tools 
-   do
-      # we build the tools again to ensure they are prepared to the LiveCD environment
-      if [ -e Output/ROLayer/Programs/$package/${today}-GIT/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
-      then 
-         echo "Rebuilding $package..." 
-         chroot Output/ROLayer /bin/make -C Programs/$package/${today}-GIT/ clean
-         chroot Output/ROLayer /bin/make -C Programs/$package/${today}-GIT/
-      fi
-   done
-
    Log_Normal "Installing Aliens"
 
    # Must bind-mount so that the union-mount doesn't deadlock
@@ -199,6 +187,21 @@ then
    mv "${root}/Output/ROLayer/System/Settings/resolv.conf.orig" "${root}/Output/ROLayer/System/Settings/resolv.conf"
    umount "${root}/Output/ROLayer/System/Aliens-bindmount"
    rmdir "${root}/Output/ROLayer/System/Aliens-bindmount"
+
+   echo
+   cd "$root"
+   for package in $tools
+   do
+      # we build the tools again to ensure they are prepared to the LiveCD environment
+      if [ -e Output/ROLayer/Programs/$package/${today}-GIT/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
+      then
+         echo "Rebuilding $package..."
+         in_rolayer make -C Programs/$package/${today}-GIT/ clean
+         in_rolayer make -C Programs/$package/${today}-GIT/
+         in_rolayer SymlinkProgram $package ${today}-GIT
+         create_gobo_package "$package"
+      fi
+   done
 
    echo "Coping $filesdir from LocalGit..."
    # Add few items to rolayer
