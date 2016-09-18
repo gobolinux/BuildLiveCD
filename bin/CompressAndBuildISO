@@ -86,6 +86,8 @@ function in_rolayer() {
 function create_gobo_package() {
    local package="$1"
    local tarball=$package--${today}-GIT--$arch.tar.bz2
+   local ret=0
+   Quiet pushd "$packages"
    if [ ! -e "$tarball" -o "`find "$localgit/tools/$package/" -newer "$tarball" 2> /dev/null`" ]
    then
       echo "Packing $package Git snapshot..."
@@ -96,10 +98,12 @@ function create_gobo_package() {
       rm -f $package--*--$arch.tar.bz2         # cleaning up old versions too
       tar cjpf $tarball $package/${today}-GIT  # create the package
       rm -rf -- $package
-      toolswhichneedmake="$toolswhichneedmake $package"
    else
       echo "Not repacking $package Git snapshot..."
+      ret=1
    fi
+   Quiet popd
+   return $ret
 }
 
 #############################################################################
@@ -126,7 +130,7 @@ then
    for package in $tools 
    do
       # Create a binary package of the GoboLinux tool
-      create_gobo_package "$package"
+      create_gobo_package "$package" && toolswhichneedmake="$toolswhichneedmake $package"
 
       # Remove old snapshots of the GoboLinux packages from ROLayer
       ls "${root}/Output/ROLayer/Programs/$package/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
