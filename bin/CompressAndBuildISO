@@ -205,7 +205,7 @@ then
 
    echo "Coping $filesdir from LocalGit..."
    # Add few items to rolayer
-   for directory in Descriptions Wallpapers Fonts
+   for directory in Wallpapers
    do
       if ! diff --recursive --exclude=.git "LocalGit/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
       then
