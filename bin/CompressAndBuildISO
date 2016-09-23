@@ -75,12 +75,18 @@ fi
 function in_rolayer() {
    local rolayer="${root}/Output/ROLayer"
    local pythonversion=$(basename ${rolayer}/Programs/Scripts/${today}-GIT/lib/python*)
-   (
-      export "PYTHONPATH=$PYTHONPATH:/Programs/Scripts/${today}-GIT/lib/$pythonversion/site-packages"
-      export "PATH=$PATH:/Programs/Scripts/${today}-GIT/bin"
-      source "${rolayer}/Programs/Scripts/${today}-GIT/bin/GoboPath"
-      chroot "${rolayer}" "$@"
-   )
+   cat << EOF > "${rolayer}/tmp/in_rolayer.sh"
+export "PYTHONPATH=$PYTHONPATH:/Programs/Scripts/${today}-GIT/lib/$pythonversion/site-packages"
+export "PATH=$PATH:/Programs/Scripts/${today}-GIT/bin"
+source "/Programs/Scripts/${today}-GIT/bin/GoboPath"
+source "/System/Environment/Cache"
+$@
+EOF
+   chmod +x "${rolayer}/tmp/in_rolayer.sh"
+   chroot "${rolayer}" /tmp/in_rolayer.sh
+   ret=$?
+   rm -f "${rolayer}/tmp/in_rolayer.sh"
+   return $ret
 }
 
 function create_gobo_package() {
@@ -194,6 +200,7 @@ then
 
    echo
    cd "$root"
+   scriptsdir="$root/Output/ROLayer/Programs/Scripts/${today}-GIT"
    for package in $tools
    do
       # we build the tools again to ensure they are prepared to the LiveCD environment
@@ -202,8 +209,11 @@ then
          echo "Rebuilding $package..."
          in_rolayer make -C Programs/$package/${today}-GIT/ clean
          in_rolayer make -C Programs/$package/${today}-GIT/
-         in_rolayer SymlinkProgram $package ${today}-GIT
-         create_gobo_package "$package"
+         # Symlink it
+         goboPrefix="$root/Output/ROLayer" \
+         LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$root/Output/ROLayer/lib" \
+         PATH="$PATH:${scriptsdir}/bin:${scriptsdir}/src:${scriptsdir}/Functions" \
+         ${scriptsdir}/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=skip --no-requirements $package ${today}-GIT
       fi
    done
 
@@ -294,7 +304,10 @@ then
             echo ==========
             echo Changes:
             echo ----------
-            cat /tmp/newer.txt
+            if [ $(wc -l /tmp/newer.txt | awk {'print $1'}) -gt 16 ]
+            then echo "(too many changes to show)"
+            else cat /tmp/newer.txt
+            fi
             echo ==========
          fi
       fi
