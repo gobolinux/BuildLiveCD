@@ -183,7 +183,7 @@ function install_package() {
    goboPrefix="$root" \
    LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$root/lib" \
    PATH="$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions" \
-   $(scripts_dir)/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=install --no-requirements $name $version 4> /dev/null
+   $(scripts_dir)/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=install --no-requirements $name $version
 }
 
 function process_requirements() {
