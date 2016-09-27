@@ -1,10 +1,6 @@
 #!/bin/bash
 
-source ScriptFunctions
-Import OptionParser
-Import GoboLinux
-Import Bootstrap
-Import Array
+source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=yes
 scriptDescription="Automated program compilation tool."
@@ -14,18 +10,21 @@ scriptUsage="<program> <options> -- <packagelist1> [packagelist2] ..."
 Add_Option_Entry "r" "root" "Root directory to populate."
 Add_Option_Entry "p" "packagedir" "Directory containing the binary packages."
 Add_Option_Boolean "i" "use-system-index" "Generate a tree using the /System/Index layout."
-
 Parse_Options "$@"
-eval `Args_To_Array packagelist`
+
+# Extra arguments go to the packagelist array
+eval `Args_To_Array packagelist $@`
 
 unset root
 unset packagedir
 unset usesystemindex
 
-Is_Entry "root" && root=`Entry "root"`
-Is_Entry "packagedir" && packagedir=`Entry "packagedir"`
+datadir="$(readlink -f $(dirname $0)/../Data)"
+Is_Entry "root" && root=$(readlink -f $(Entry "root"))
+Is_Entry "packagedir" && packagedir=$(readlink -f $(Entry "packagedir"))
 Boolean "use-system-index" && usesystemindex=true
 
+# Sanity checks
 [ -z "$root" ] && Die "root option must be set."
 [ -z "$packagedir" ] && Die "packagedir option must be set."
 [ -d "$packagedir" ] || Die "$packagedir does not exist"
@@ -35,34 +34,28 @@ do
    [ -f "$list" ] || Die "$list does not exist"
 done
 
-datadir="${goboPrograms}/BuildLiveCD/Current/Data"
+Verify_Superuser
 
-if [ "$UID" != "0" ]
-then
-    Log_Terse "Running as superuser."
-    exec sudo -u "#0" $0 $*
-fi
-
-
-function get_package_name() {
+function get_package_names() {
    packagename=`echo $1 | awk {'print $1'} | grep -v "^#"`
+   gitlist="$datadir/Packages-List-GoboLinuxTools-Git"
 
-   if [ -e "$datadir/Packages-List-GoboLinuxTools-Git" ] && grep -q "$packagename" "$datadir/Packages-List-GoboLinuxTools-Git"
+   if [ -e "$gitlist" ] && grep -q "$packagename" "$gitlist"
    then packagever=`date +%Y%m%d`
    else packagever=`echo $1 | awk {'print $2'} | grep -v "^#"`
    fi
-   pkg=`ls $packagedir/${packagename}--${packagever}--* 2> /dev/null || true`
-   [ -z "$pkg" ] && pkg=`ls $packagedir/${packagename}--* 2> /dev/null || true`
-   if [ -z "$pkg" ]
+   pkgs=(`ls $packagedir/${packagename}--${packagever}--* 2> /dev/null`)
+   [ -z "$pkgs" ] && pkgs=(`ls $packagedir/${packagename}--* 2> /dev/null`)
+   if [ -z "$pkgs" ]
    then
       Die "*** Package $packagename $packagever could not be filled. ***" 
    fi
-   if [ "`ls $packagedir/${packagename}--* | wc -l 2> /dev/null`" -gt 1 ]
+   if [ ${#pkgs[@]} -gt 1 ]
    then  
       Log_Terse "*** Warning: more than one version for $packagename available. ***"
    fi
 
-   echo "$pkg"
+   echo "${pkgs[@]}"
 }
 
 for list in ${packagelist[@]}
@@ -72,92 +65,51 @@ do
       # just ensure that required packages are found
       ret=`echo "$line" | awk {'print $1'}`
       [ -z "$ret" ] || echo $ret | grep -q "^#" && continue
-      get_package_name "$line" > /dev/null || exit 1
+      get_package_names "$line" > /dev/null || exit 1
    done
 done
 
 [ $? -eq 0 ] || exit 1
 
-function do_link() {
-   if [ -d "$root/$1" ]
+function unpack_scripts() {
+   local scripts_package=$(get_package_names Scripts)
+   local compile_package=$(get_package_names Compile)
+   if [ ! -d /tmp/Scripts ]
    then
-      pushd $root/$2 &>/dev/null
-      (
-         export verboseFD=100
-         export normalFD=101
-         export terseFD=102
-         export errorFD=103
-         export debugFD=104
-         export logFD=105
-         export questionFD=106
-         eval "exec $verboseFD>/dev/null"
-         eval "exec $normalFD>/dev/null"
-         eval "exec $terseFD<&2"
-         eval "exec $errorFD<&2"
-         eval "exec $debugFD>/dev/null"
-         eval "exec $logFD>/dev/null"
+      Quiet pushd /tmp
+      tar xjpf "$scripts_package"
+      tar xjpf "$compile_package"
+      Quiet popd
 
-         export goboPrefix=$root
-         export goboPrograms=$root/Programs 
-         LinkOrExpandAll $root/$1 --relative --no-follow
-      )
-      popd &>/dev/null
+      # Prepare the Scripts package so we can symlink programs
+      GrepReplace 'conflocations=(' \
+                  'conflocations=( "$(dirname $scriptPath)/Resources/Defaults/Settings/Scripts"' \
+                  $(scripts_dir)/Functions/GoboLinux
+      make -C $(scripts_dir)/src
+      mv $(compile_dir)/bin/PrepareProgram $(scripts_dir)/bin
+      rm -rf /tmp/Compile
    fi
 }
 
+function remove_unpacked_scripts() {
+   rm -rf /tmp/Scripts
+}
 
-function symlink_program() {
-   full_path="$1"
-   root=`readlink -f $2`
-   gobosystem=/System
-   gobolinks=${gobosystem}/Links
-   goboindex=/usr
-   name=$(basename $(dirname $full_path))
-   version=$(basename ${full_path})
-   
-   if [ "$usesystemindex" ]
-   then
-      goboenvironment=${gobosystem}/Environment
-      do_link ${full_path}/bin ${goboindex}/bin
-      do_link ${full_path}/sbin ${goboindex}/bin
-      do_link ${full_path}/Resources/Wrappers ${goboindex}/bin
-      do_link ${full_path}/Resources/Tasks ${gobosystem}/Tasks
-      do_link ${full_path}/lib ${goboindex}/lib
-      do_link ${full_path}/libexec ${goboindex}/libexec
-      #do_link ${full_path}/lib64 ${goboindex}/lib64
-      do_link ${full_path}/man ${goboindex}/share/man
-      do_link ${full_path}/info ${goboindex}/share/info
-      do_link ${full_path}/include ${goboindex}/include
-      do_link ${full_path}/../Settings ${gobosystem}/Settings
-      do_link ${full_path}/share ${goboindex}/share
+function scripts_dir() {
+   echo /tmp/Scripts/*
+}
 
-      [ -f "${root}${full_path}/Resources/Environment" ] && \
-      ln -nfs ../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
-      ln -nfs $version ${root}$(dirname ${full_path})/Current
-   else
-      goboenvironment=${gobolinks}/Environment
-      do_link ${full_path}/bin ${gobolinks}/Executables
-      do_link ${full_path}/sbin ${gobolinks}/Executables
-      do_link ${full_path}/Resources/Wrappers ${gobolinks}/Executables
-      do_link ${full_path}/Resources/Tasks ${gobolinks}/Tasks
-      do_link ${full_path}/lib ${gobolinks}/Libraries
-      do_link ${full_path}/man ${gobolinks}/Manuals
-      do_link ${full_path}/info ${gobolinks}/Manuals/info
-      do_link ${full_path}/include ${gobolinks}/Headers
-      do_link ${full_path}/../Settings ${gobolinks}/../Settings
-      do_link ${full_path}/Shared ${gobolinks}/Shared
-
-      [ -f "${root}${full_path}/Resources/Environment" ] && \
-      ln -nfs ../../../Programs/${name}/${version}/Resources/Environment ${root}${goboenvironment}/${name}--${version}
-      ln -nfs $version ${root}$(dirname ${full_path})/Current
-   fi
-
+function compile_dir() {
+   echo /tmp/Compile/*
 }
 
 function program_md5() {
    name="$1"
    version="$2"
-   cat "${root}"/../Checksums/$name--$version 2> /dev/null | tail -1 || echo "0000"
+   if [ "$version" ]
+   then cat "${root}"/../Checksums/$name--$version 2> /dev/null | tail -1 || echo "0000"
+   else cat "${root}"/../Checksums/$name 2> /dev/null | tail -1 || echo "0000"
+   fi
 }
 
 function install_package() {
@@ -171,9 +123,9 @@ function install_package() {
    then vardir=/Data/Variable
    else vardir=/System/Variable
    fi
-   
+
    packagemd5=`md5sum $package`
-   if [ -d "$root/Programs/$name" ]
+   if [ -d "$root/Programs/$name/$version" ]
    then 
       if [ "`program_md5 $name $version`" =  "$packagemd5" ]
       then
@@ -198,17 +150,17 @@ function install_package() {
       fi
    fi
    echo "$packagemd5" > "${root}"/../Checksums/$name--$version
-   
+
    Log_Normal "Installing $name $version..."
    pushd "$root/Programs" &> /dev/null
    tar xjpf "$package"
 
    # Remove empty dirs in Resources
-   for i in `find "$name/$version/Resources" -type d -empty 2> /dev/null | grep -v Variable | grep -v Settings`
+   for i in `find "$name/$version/Resources" -type d -empty 2> /dev/null | grep -v "Variable\|Settings"`
    do
        rmdir -p $i 2> /dev/null || true
    done
-   
+
    if [ ! "$usesystemindex" ]
    then
       # Fixes broken share->Shared instead of share->/System/Links/Shared
@@ -217,24 +169,38 @@ function install_package() {
    fi
 
    dsettings="$name/$version/Resources/Defaults/Settings"
-   [ -d "$dsettings" ] && cp -a "$dsettings" "$name/Settings"
+   [ -d "$dsettings" ] && cp -a "$dsettings" "$name/"
    dvariable="$name/$version/Resources/Defaults/Variable"
    if [ -d "$dvariable" ]
    then
-      cp -rf "$dvariable"/* $vardir
+      cp -rf "$dvariable"/* $root/$vardir
       ln -s $vardir "$name/Variable"
    fi
-   
-   # Handling Unmanaged files (emulating InstallPackage)
-   # This is now handled by unionfs in InitRDScripts/bin/startGoboLinux
-   #if [ -d "$name/$version/Resources/Unmanaged/" -a "$name" != "Linux" ]
-   #then
-   #   cp -fa $name/$version/Resources/Unmanaged/* ../ # warning: assuming we are under $root/Programs
-   #fi
-   
+
    popd &> /dev/null
-   
-   symlink_program /Programs/$name/$version $root
+
+   # Symlink it
+   goboPrefix="$root" \
+   LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$root/lib" \
+   PATH="$PATH:$(scripts_dir)/bin:$(scripts_dir)/src:$(scripts_dir)/Functions" \
+   $(scripts_dir)/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=install --no-requirements $name $version
+}
+
+function process_requirements() {
+   package=`readlink -f "$1"`
+   root="$2"
+   base=$(basename $package)
+   name=${base%%--*}
+   packageversion=${base#*--}
+   version=`echo ${packageversion%%--*} | sed -r 's/-r[0-9]+(p[0-9]+)?$//g'`
+   if [ -e "$root/Programs/$name/$version/Resources/Requirements" ]
+   then
+      (
+         export goboDevices=/dev
+         export goboStatus=/proc
+         yes "" | Run_Requirements_Wrapper "/Programs/$name/$version" "$root"
+      )
+   fi
 }
 
 Log_Normal "BuildRoot: Building root $root..."
@@ -242,7 +208,10 @@ Log_Normal "BuildRoot: Building root $root..."
 #
 # Base Directories
 #
-Create_Filesystem_Tree $root gobo $usesystemindex
+unpack_scripts
+source $(scripts_dir)/Functions/Bootstrap
+source $(scripts_dir)/Functions/Requirements
+Create_Filesystem_Tree $root root $usesystemindex
 Create_Device_Nodes $root
 
 #
@@ -251,7 +220,7 @@ Create_Device_Nodes $root
 mkdir -p "${root}"/../Checksums/
 
 mksettings=`which MakeSystemSettings`
-if [ "`md5sum "$mksettings"`" =  "`cat "${root}/../Checksums/MakeSystemSettings" 2> /dev/null`" ]
+if [ "$(md5sum "$mksettings")" =  "$(program_md5 MakeSystemSettings)" ] && [ -e "${root}/System/Settings/GoboLinuxVersion" ]
 then
    Log_Normal "Skipping MakeSystemSettings"
 else
@@ -264,10 +233,11 @@ else
    md5sum "$mksettings" > "${root}/../Checksums/MakeSystemSettings"
 fi
 
+installed_packages=""
 for list in ${packagelist[@]}
 do
-   Log_Terse "Installing packages from $list"
-   cat $list | while read line
+   Log_Normal "Installing packages from $list"
+   for line in $(cat $list)
    do
       name=$(echo $line | awk {'print $1'})
       version=$(echo $line | awk {'print $2'})
@@ -277,9 +247,17 @@ do
       if echo "${version:0:1}" | grep -q "^#"
       then unset version
       fi
-      pkgs=(`get_package_name $line`)
-      for pkg in ${pkgs[@]}; do install_package "$pkg" "$root"; done
+      pkgs=(`get_package_names $line`)
+      for pkg in ${pkgs[@]}
+      do
+         install_package "$pkg" "$root"
+         installed_packages="$installed_packages $pkg"
+      done
    done
+done
+for pkg in $installed_packages
+do
+   process_requirements "$pkg" "$root"
 done
 
 if [ "$usesystemindex" ]
@@ -315,15 +293,16 @@ else
 fi
 
 Log_Normal "Running ldconfig"
-ldconfig -r ${root}
+/usr/sbin/chroot ${root} ldconfig
 
-# SymlinkProgram --relative is not perfect yet, but, ideally, we should call the following command
 if [ "$usesystemindex" ]
 then
    Log_Normal "Checking for broken links at ${root}/System/Index"
-   find ${root}/System/Index/ | RemoveBroken
+   find ${root}/System/Index/ | $(scripts_dir)/bin/RemoveBroken
 else
    Log_Normal "Checking for broken links at ${root}/System/Links/"
-   find ${root}/System/Links/ | RemoveBroken
+   find ${root}/System/Links/ | $(scripts_dir)/bin/RemoveBroken
 fi
+
+remove_unpacked_scripts
 exit 0

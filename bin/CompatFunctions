@@ -1,0 +1,251 @@
+#!/bin/bash (source)
+
+colorGray="\033[1;30m"
+colorBoldBlue="\033[1;34m"
+colorBrown="\033[33m"
+colorYellow="\033[1;33m"
+colorBoldGreen="\033[1;32m"
+colorBoldRed="\033[1;31m"
+colorCyan="\033[36m"
+colorBoldCyan="\033[1;36m"
+colorRedWhite="\033[41;37m"
+colorNormal="\033[0m"
+colorBold="${colorYellow}"
+colorOff="${colorNormal}"
+
+Setup_FileDescriptors() {
+   normalFD=1
+   errorFD=2
+   terseFD=3
+   verboseFD=4
+   debugFD=5
+   # close
+   eval "exec $terseFD>&-"
+   eval "exec $verboseFD>&-"
+   eval "exec $debugFD>&-"
+   # dup stderr
+   eval "exec $terseFD<&2"
+   eval "exec $verboseFD<&2"
+   eval "exec $debugFD<&2"
+}
+
+Setup_FileDescriptors
+
+Log_Function() {
+   local message="$1"
+   local color="$2"
+   local FD="$3"
+   echo -e $echoflags "${colorGray}${scriptName}:${colorNormal} ${color}$message${colorNormal}" >&$FD
+}
+
+Log_Error() {
+   Log_Function "$*" "${colorBoldRed}" "${errorFD}"
+}
+
+Log_Normal() {
+   Log_Function "$*" "${colorCyan}" "${normalFD}"
+}
+
+Log_Terse() {
+   Log_Function "$*" "${colorBoldCyan}" "${terseFD}"
+}
+
+Log_Verbose() {
+   Log_Function "$*" "${colorNormal}" "${verboseFD}"
+}
+
+Log_Debug() {
+   Log_Function "$*" "${colorRedWhite}" "${debugFD}"
+}
+
+Die() {
+   [ "" = "$*" ] || Log_Error "$@"
+   exit 1
+}
+
+Quiet() { "$@" &> /dev/null ;}
+
+
+# Respawn the script, asking for root privileges
+Verify_Superuser_() {
+   if [ 0 != "$(id -u)" ]
+   then
+      Log_Verbose "Running as superuser..."
+      # Run with superuser's HOME.
+      exec sudo -u "#0" -H env $0 "$@"
+   fi
+}
+
+Verify_Superuser() {
+   Verify_Superuser_ "$@"
+}
+
+
+# Poor man's GrepReplace
+GrepReplace() {
+   local one="`echo $1 | sed 's%/%\\\\/%g'`"
+   local two="`echo $2 | sed 's%/%\\\\/%g'`"
+   local file="$3"
+   sed --follow-symlinks -i -- "s/$one/$two/g" "$file"
+}
+
+
+# Minimalist implementation of the OptionParser
+_availableOptions=()
+_givenOptions=()
+_otherArguments=()
+
+_Parse_Options_Help() {
+   echo "$scriptDescription"
+   echo
+   echo "Usage: $scriptName $scriptUsage"
+   echo
+   if [ "$_availableOptions" ]
+   then
+      echo "Options:"
+      for entry in "${_availableOptions[@]}"
+      do
+         entrytype=$(echo "$entry" | cut -d" " -f1)
+         shortopt=$(echo "$entry" | cut -d" " -f2)
+         longopt=$(echo "$entry" | cut -d" " -f3)
+         description=$(echo "$entry" | cut -d" " -f4-)
+         if [ "$entrytype" = "B" ]
+         then echo "   -${shortopt}, --${longopt}"
+         else echo "   -${shortopt}, --${longopt} <entry>"
+         fi
+         echo "       $description"
+      done
+      echo
+   fi
+   [ "$scriptNotes" ] && echo "$scriptNotes"
+   exit $1
+}
+
+Parse_Options() {
+   scriptName="$(basename $0)"
+
+   local shortopts="h"
+   local longopts="help"
+   for entry in "${_availableOptions[@]}"
+   do
+      entrytype=$(echo "$entry" | cut -d" " -f1)
+      shortopt=$(echo "$entry" | cut -d" " -f2)
+      longopt=$(echo "$entry" | cut -d" " -f3)
+      if [ "$entrytype" = "B" ]
+      then
+         shortopts="${shortopts}${shortopt}"
+         longopts="${longopts},${longopt}"
+      else
+         shortopts="${shortopts}${shortopt}:"
+         longopts="${longopts},${longopt}:"
+      fi
+   done
+   GETOPT_ARGS=`getopt -l "$longopts" -o "$shortopts" -- "$@"`
+   [ $? != 0 ] && Die "Error parsing command line options"
+   eval set -- "$GETOPT_ARGS"
+
+   while true
+   do
+      case "$1" in
+         -h|--help)
+            _Parse_Options_Help 0
+            ;;
+         --)
+            shift
+            break
+            ;;
+         *)
+            for entry in "${_availableOptions[@]}"
+            do
+               entrytype=$(echo "$entry" | cut -d" " -f1)
+               shortopt=$(echo "$entry" | cut -d" " -f2)
+               longopt=$(echo "$entry" | cut -d" " -f3)
+               description=$(echo "$entry" | cut -d" " -f4-)
+               case "$1" in
+                  -${shortopt}|--${longopt})
+                     if [ "$2" = "--" ]
+                     then arg=""
+                     else arg="$2"; shift
+                     fi
+                     _givenOptions=(
+                        "${_givenOptions[@]}"
+                        "${entrytype} ${longopt} ${arg}"
+                     )
+                     shift
+                     ;;
+               esac
+            done
+            ;;
+      esac
+   done
+   args=()
+   for arg do _otherArguments=( "${_otherArguments[@]}" "$arg" ); done
+}
+
+Parse_Conf() {
+   source "$(dirname $0)/../Resources/Defaults/Settings/BuildLiveCD/$1"
+}
+
+Add_Option_Entry() {
+   local shortopt="$1"
+   local longopt="$2"
+   local description="$3"
+   _availableOptions=(
+      "${_availableOptions[@]}"
+      "E $shortopt $longopt $description"
+   )
+}
+
+Add_Option_Boolean() {
+   local shortopt="$1"
+   local longopt="$2"
+   local description="$3"
+   _availableOptions=(
+      "${_availableOptions[@]}"
+      "B $shortopt $longopt $description"
+   )
+}
+
+Entry() {
+   local needle="$1"
+   for entry in "${_givenOptions[@]}"
+   do
+      entrytype=$(echo "$entry" | cut -d" " -f1)
+      longopt=$(echo "$entry" | cut -d" " -f2)
+      arg=$(echo "$entry" | cut -d" " -f3)
+      [ "$longopt" = "$needle" ] && { echo "$arg"; break; }
+   done
+}
+
+Is_Entry() {
+   local needle="$1"
+   for entry in "${_givenOptions[@]}"
+   do
+      entrytype=$(echo "$entry" | cut -d" " -f1)
+      longopt=$(echo "$entry" | cut -d" " -f2)
+      arg=$(echo "$entry" | cut -d" " -f3)
+      [ "$longopt" = "$needle" ] && return 0
+   done
+   return 1
+}
+
+Boolean() {
+   Is_Entry "$@"
+}
+
+Args_To_Array() {
+   local name="$1"
+   shift
+   echo "$name=("
+   for entry in "${_otherArguments[@]}"
+   do
+      echo "\"$entry\""
+   done
+   echo ")"
+}
+
+Arg() {
+   local argnum="$1"
+   let argnum=argnum-1
+   echo "${_otherArguments[$argnum]}"
+}

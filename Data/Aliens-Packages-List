@@ -1,0 +1,5 @@
+CPAN:XML::Parser
+CPAN:Locale::gettext
+LuaRocks:lgi
+LuaRocks:luafilesystem
+LuaRocks:lanes

@@ -1,9 +1,6 @@
 #!/bin/bash
 
-source ScriptFunctions
-Import OptionParser
-Import GoboLinux
-Import Bootstrap
+source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=no
 scriptDescription="Builds the GoboLinux LiveCD InitRD tree."
@@ -32,6 +29,10 @@ archives=$PWD/Archives/
 
 rm -rf $root
 mkdir -p $root
+
+scriptsVersion=$(ls $rolayer/Programs/Scripts/ | grep -v "Current\|Settings\|Variable")
+source $rolayer/Programs/Scripts/$scriptsVersion/Functions/Bootstrap
+
 
 ####################################################
 # Fetch packages
@@ -70,6 +71,7 @@ kernel_modules=(
     vhci
     whci
     xhci
+    overlay
 )
 
 cd $root
@@ -78,7 +80,7 @@ cd $root
 # Directory structure
 ####################################################
 
-Create_Filesystem_Tree $root gobo $usesystemindex
+Create_Filesystem_Tree $root root $usesystemindex
 
 rmdir $root/Mount/*
 mkdir -p $root/Mount/HD0
@@ -138,39 +140,53 @@ Create_Device_Nodes $root
 ####################################################
 
 kernelversion=$(basename "$(readlink -f "$rolayer/Programs/Linux/Current")")
-mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
+moddir="${root}/System/Kernel/Modules/${kernelversion}-Gobo"
+mkdir -p "${moddir}/kernel"
 
-for module in "${kernel_modules[@]}"
-do
-   [ -z "$module" ] && continue
-   cd "$rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel"
-   modpath=$(find -name "${module}*.ko")
-   popd &>/dev/null
-   if [ ! -z "$modpath" ]
-   then
-      for mod in ${modpath[@]}
+# Remove symbolic link, make /lib/modules/$kernelversion a directory
+rm -f "${root}/lib/modules"
+mkdir -p "${root}/lib/modules/${kernelversion}-Gobo"
+
+unmanageddir="${rolayer}/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo"
+if [ "$kernel_modules" ]
+then
+   # Satisfy depmod needs
+   [ -e "${unmanageddir}/modules.order" ] && cp "${unmanageddir}/modules.order" "$moddir"
+   [ -e "${unmanageddir}/modules.builtin" ] && cp "${unmanageddir}/modules.builtin" "$moddir"
+
+   for module in "${kernel_modules[@]}"
+   do
+      Quiet pushd "${unmanageddir}/kernel"
+      modpath=( $(find -name "${module}*.ko" -or -name "${module}*.ko.xz") )
+      Quiet popd
+      [ -z "$modpath" ] && continue
+      for mod in "${modpath[@]}"
       do
-         mkdir -p "${root}/System/Kernel/Modules/${kernelversion}-Gobo/kernel/$(dirname ${mod})"
+         mkdir -p "${moddir}/kernel/$(dirname ${mod})"
          cp --remove-destination \
-            $rolayer/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${mod} \
-            $root/System/Kernel/Modules/${kernelversion}-Gobo/kernel/${mod}
+            ${unmanageddir}/kernel/${mod} \
+            ${moddir}/kernel/${mod}
       done
-   fi
-done
+   done
+fi
 
-depmod -b "${root}" ${kernelversion}-Gobo
+# Depmod tries to locate files under /lib/modules
+mount -o bind "$moddir" "${root}/lib/modules/${kernelversion}-Gobo"
+/sbin/depmod -b "${root}" ${kernelversion}-Gobo
+umount "${root}/lib/modules/${kernelversion}-Gobo"
 
 ####################################################
 # Populate /System/Settings
 ####################################################
 
 cat <<EOF > $root/System/Settings/fstab
-/dev/ram0       /               ext2    defaults         
-none            /proc           proc    defaults
+/dev/ram0       /                      ext2    defaults
+none            /proc                  proc    defaults
+/lib/modules    /System/Kernel/Modules none    bind 0 0
 EOF
 
 cat <<EOF > $root/System/Settings/group
-gobo:x:0:
+root:x:0:
 EOF
 
 cat <<EOF > $root/System/Settings/hostname
@@ -178,7 +194,6 @@ mini-GoboLinux
 EOF
 
 cat <<EOF > $root/System/Settings/inittab
-
 ::sysinit:/bin/startGoboLinux
 ::respawn:-/bin/ash
 tty2::askfirst:-/bin/ash
@@ -193,7 +208,7 @@ tty6::askfirst:-/bin/ash
 EOF
 
 cat <<EOF > $root/System/Settings/passwd
-gobo:x:0:0::/Users/gobo:/bin/ash
+root:x:0:0::/Users/root:/bin/ash
 bin:x:1:1:bin:/bin:
 daemon:x:2:2:daemon:/sbin:
 sync:x:5:0:sync:/sbin:/bin/sync
@@ -214,9 +229,9 @@ alias l='ls -l'
 
 if [ "\$(basename \$TTY)" = "tty4" ]
 then
-   /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
+   /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/root TERM=linux /bin/zsh
 else
-   exec /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/gobo TERM=linux /bin/zsh
+   exec /bin/chroot /Mount/SquashFS /usr/bin/env -i HOME=/Users/root TERM=linux /bin/zsh
 fi
 EOF
 
@@ -228,7 +243,7 @@ EOF
 chmod +x $root/System/Settings/rc
 
 cat <<EOF > $root/System/Settings/shadow
-gobo::11501:0:::::
+root::11501:0:::::
 
 bin:*:9797:0:::::
 daemon:*:9797:0:::::

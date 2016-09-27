@@ -1,8 +1,6 @@
 #!/bin/bash
 
-. ScriptFunctions
-Import OptionParser
-Import GoboLinux 
+source $(dirname $0)/CompatFunctions
 
 if [ "$1" == "--help" ]
 then
@@ -28,7 +26,7 @@ ppmfile="$isolinuxdir/gobolinux015.ppm"
 builddir="$PWD/TemporaryBuild"
 mkdir -p "$builddir" "$archives"
 
-datadir="$livecdDataDir"
+datadir="$(readlink -f $(dirname $0)/../Data)"
 if [ -d "$datadir" ]
 then
    Quiet pushd "$datadir"
@@ -84,8 +82,8 @@ function BuildISOLINUX() {
    # Patch
    if ! grep -q "/Programs" efi/find-gnu-efi.sh
    then
-      GrepReplace -B "^include_dirs=\"" "include_dirs=\"/Programs/GNU-EFI/Current/include " efi/find-gnu-efi.sh
-      GrepReplace -B "^lib_dirs=\"" "lib_dirs=\"/Programs/GNU-EFI/Current/lib " efi/find-gnu-efi.sh
+      GrepReplace "^include_dirs=\"" "include_dirs=\"/Programs/GNU-EFI/Current/include " efi/find-gnu-efi.sh
+      GrepReplace "^lib_dirs=\"" "lib_dirs=\"/Programs/GNU-EFI/Current/lib " efi/find-gnu-efi.sh
    fi
    # Set build flags
    case $(uname -m) in
@@ -171,9 +169,9 @@ function BuildBusyBox() {
    if [ ! -e ".config" -o "$datadir/busybox.config" -nt ".config" ]
    then
       cp -v "$datadir/busybox.config" ".config"
-      yes | make oldconfig 
+      yes "" | make oldconfig
    fi
-   GrepReplace -B "CONFIG_PREFIX=.*" "CONFIG_PREFIX=\"$installDir\"" .config
+   GrepReplace "CONFIG_PREFIX=.*" "CONFIG_PREFIX=\"$installDir\"" .config
    ln -nfs "$version" "$2/Current"
    make && make install
    Quiet popd
@@ -193,7 +191,7 @@ fi
 if [ ! -e "$output/ISO/isolinux/isolinux.bin" ]
 then
    #DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/" "syslinux" "tar.xz"
-   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/Testing/6.03" "syslinux" "tar.xz"
+   DownloadLatest "https://www.kernel.org/pub/linux/utils/boot/syslinux/Testing/6.04" "syslinux" "tar.xz"
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls syslinux*.tar.xz | tail -n1))"
    Quiet popd
@@ -204,7 +202,7 @@ fi
 # Build BusyBox
 if [ $(ls $archives/BusyBox-InitRD--* 2> /dev/null | wc -l) = 0 ]
 then
-   DownloadLatest "http://www.busybox.net/downloads/" "busybox-1" "tar.bz2"
+   DownloadLatest "http://sources.buildroot.net/" "busybox-1" "tar.bz2"
    Quiet pushd "$builddir"
    archiveDir="$(UnpackArchive $(ls busybox-1*.tar.bz2 | tail -n1))"
    Quiet popd
@@ -238,13 +236,13 @@ do
    else
       echo "Getting $gitrepo..."
       pushd tools
-      git clone --branch=015 https://github.com/gobolinux/$gitrepo || \
-      git clone              https://github.com/gobolinux/$gitrepo
+      git clone https://github.com/gobolinux/$gitrepo
       popd
    fi
 done
 
 if [ -e "files" ]
+then
    echo "Updating Files..."
    cd files
    git pull
@@ -253,7 +251,7 @@ else
    echo "Getting Files..."
    git clone https://github.com/gobolinux/Files
    mv Files files
-done
+fi
 
 rm -rf files/Documentation
 
