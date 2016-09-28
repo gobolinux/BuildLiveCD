@@ -85,7 +85,7 @@ function unpack_scripts() {
       GrepReplace 'conflocations=(' \
                   'conflocations=( "$(dirname $scriptPath)/Resources/Defaults/Settings/Scripts"' \
                   $(scripts_dir)/Functions/GoboLinux
-      make -C $(scripts_dir)/src
+      make -C $(scripts_dir)/src > /dev/null
       mv $(compile_dir)/bin/PrepareProgram $(scripts_dir)/bin
       rm -rf /tmp/Compile
    fi
@@ -152,7 +152,7 @@ function install_package() {
    echo "$packagemd5" > "${root}"/../Checksums/$name--$version
 
    Log_Normal "Installing $name $version..."
-   pushd "$root/Programs" &> /dev/null
+   Quiet pushd "$root/Programs"
    tar xjpf "$package"
 
    # Remove empty dirs in Resources
@@ -169,15 +169,15 @@ function install_package() {
    fi
 
    dsettings="$name/$version/Resources/Defaults/Settings"
-   [ -d "$dsettings" ] && cp -a "$dsettings" "$name/"
    dvariable="$name/$version/Resources/Defaults/Variable"
+   [ -d "$dsettings" ] && cp -a "$dsettings" "$name/"
    if [ -d "$dvariable" ]
    then
       cp -rf "$dvariable"/* $root/$vardir
       ln -s $vardir "$name/Variable"
    fi
 
-   popd &> /dev/null
+   Quiet popd
 
    # Symlink it
    goboPrefix="$root" \
@@ -298,11 +298,15 @@ Log_Normal "Running ldconfig"
 if [ "$usesystemindex" ]
 then
    Log_Normal "Checking for broken links at ${root}/System/Index"
-   find ${root}/System/Index/ | $(scripts_dir)/bin/RemoveBroken
+   echo -e '#!/bin/bash\nfind /System/Index | /bin/RemoveBroken' > "${root}/tmp/remove_broken"
 else
    Log_Normal "Checking for broken links at ${root}/System/Links/"
-   find ${root}/System/Links/ | $(scripts_dir)/bin/RemoveBroken
+   echo -e '#!/bin/bash\nfind /System/Links | /bin/RemoveBroken' > "${root}/tmp/remove_broken"
 fi
+
+chmod +x "${root}/tmp/remove_broken"
+/usr/sbin/chroot ${root} "/tmp/remove_broken"
+rm -f "${root}/tmp/remove_broken"
 
 remove_unpacked_scripts
 exit 0
