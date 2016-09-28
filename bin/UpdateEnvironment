@@ -22,7 +22,7 @@ output=$PWD/Output
 archives=$PWD/Archives
 cdbootloaderdir="$(readlink -f $(dirname $0)/../CD-Bootloader)"
 isolinuxdir="$cdbootloaderdir/isolinux"
-ppmfile="$isolinuxdir/gobolinux015.ppm"
+ppmfile="$isolinuxdir/gobolinux016.ppm"
 builddir="$PWD/TemporaryBuild"
 mkdir -p "$builddir" "$archives"
 
