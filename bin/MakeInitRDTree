@@ -140,40 +140,35 @@ Create_Device_Nodes $root
 ####################################################
 
 kernelversion=$(basename "$(readlink -f "$rolayer/Programs/Linux/Current")")
-moddir="${root}/System/Kernel/Modules/${kernelversion}-Gobo"
-mkdir -p "${moddir}/kernel"
+initrd_moddir="${root}/lib/modules/${kernelversion}-Gobo"
+mkdir -p "${initrd_moddir}/kernel"
 
-# Remove symbolic link, make /lib/modules/$kernelversion a directory
-rm -f "${root}/lib/modules"
-mkdir -p "${root}/lib/modules/${kernelversion}-Gobo"
-
-unmanageddir="${rolayer}/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Modules/${kernelversion}-Gobo"
+modulesdir="${rolayer}/Programs/Linux/Current/lib/modules/${kernelversion}-Gobo"
 if [ "$kernel_modules" ]
 then
    # Satisfy depmod needs
-   [ -e "${unmanageddir}/modules.order" ] && cp "${unmanageddir}/modules.order" "$moddir"
-   [ -e "${unmanageddir}/modules.builtin" ] && cp "${unmanageddir}/modules.builtin" "$moddir"
+   [ -e "${modulesdir}/modules.order" ] && cp "${modulesdir}/modules.order" "$initrd_moddir"
+   [ -e "${modulesdir}/modules.builtin" ] && cp "${modulesdir}/modules.builtin" "$initrd_moddir"
 
    for module in "${kernel_modules[@]}"
    do
-      Quiet pushd "${unmanageddir}/kernel"
+      Quiet pushd "${modulesdir}/kernel"
       modpath=( $(find -name "${module}*.ko" -or -name "${module}*.ko.xz") )
       Quiet popd
       [ -z "$modpath" ] && continue
       for mod in "${modpath[@]}"
       do
-         mkdir -p "${moddir}/kernel/$(dirname ${mod})"
+         mkdir -p "${initrd_moddir}/kernel/$(dirname ${mod})"
          cp --remove-destination \
-            ${unmanageddir}/kernel/${mod} \
-            ${moddir}/kernel/${mod}
+            ${modulesdir}/kernel/${mod} \
+            ${initrd_moddir}/kernel/${mod}
+         if echo "${mod}" | grep -q ".xz"
+         then
+            xz -d "${initrd_moddir}/kernel/${mod}"
+         fi
       done
    done
 fi
-
-# Depmod tries to locate files under /lib/modules
-mount -o bind "$moddir" "${root}/lib/modules/${kernelversion}-Gobo"
-/sbin/depmod -b "${root}" ${kernelversion}-Gobo
-umount "${root}/lib/modules/${kernelversion}-Gobo"
 
 ####################################################
 # Populate /System/Settings
