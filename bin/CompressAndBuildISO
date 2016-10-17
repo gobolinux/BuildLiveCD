@@ -98,10 +98,17 @@ source "/Programs/Scripts/${today}-GIT/bin/GoboPath"
 source "/System/Environment/Cache"
 $@
 EOF
+   # Borrow resolv.conf from the host so that we have network access inside the ROLayer
+   mv "${root}/Output/ROLayer/System/Settings/resolv.conf" "${root}/Output/ROLayer/System/Settings/resolv.conf.orig"
+   cp /etc/resolv.conf "${root}/Output/ROLayer/System/Settings/resolv.conf"
+
    chmod +x "${rolayer}/tmp/in_rolayer.sh"
    chroot "${rolayer}" /tmp/in_rolayer.sh
    ret=$?
    rm -f "${rolayer}/tmp/in_rolayer.sh"
+
+   # Rollback changes to resolv.conf
+   mv "${root}/Output/ROLayer/System/Settings/resolv.conf.orig" "${root}/Output/ROLayer/System/Settings/resolv.conf"
    return $ret
 }
 
