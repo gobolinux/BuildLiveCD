@@ -200,7 +200,7 @@ then
       version="$(echo "${line}" | awk '{ print $2 }')"
 
       unset ualiens
-      for unmanaged_aliens in "${root}"/Output/ROLayer/Programs/*/Current/Resources/Unmanaged/System/Aliens
+      for unmanaged_aliens in $(readlink -f "${root}"/Output/ROLayer/Programs/*/Current/Resources/Unmanaged/System/Aliens 2> /dev/null)
       do
          ualiens="${ualiens:+${ualiens}:}${unmanaged_aliens}=ro"
       done
