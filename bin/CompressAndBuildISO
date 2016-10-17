@@ -177,7 +177,6 @@ then
    done
 
    Log_Normal "Building root..."
-   cd "$root"
    unset buildrootopts
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
@@ -220,8 +219,6 @@ then
    umount "${root}/Output/ROLayer/System/Aliens-bindmount"
    rmdir "${root}/Output/ROLayer/System/Aliens-bindmount"
 
-   echo
-   cd "$root"
    scriptsdir="$root/Output/ROLayer/Programs/Scripts/${today}-GIT"
    for package in $tools
    do
@@ -295,16 +292,16 @@ then
       if [ -e "$out" ]
       then
          echo "Checking if $bn needs updating..."
-         Quiet pushd ../ROLayer
+         Quiet pushd "$root/Output/ROLayer"
          find $searchdirs -newer "$out" 2> /dev/null > /tmp/newer.txt
          Quiet popd
-         Quiet pushd ../RWLayer
+         Quiet pushd "$root/Output/RWLayer"
          find $searchdirs -newer "$out" 2> /dev/null >> /tmp/newer.txt
          Quiet popd
          diffs=`cat /tmp/newer.txt | grep -v "^Programs/Glibc$\|^Programs/Glibc/Settings$\|^Programs/Glibc/Settings/ld.so.cache$\|^Data/Variable/cache/ldconfig$\|^Data/Variable/cache/ldconfig/aux-cache$" | wc -l`
          ld_so_cache_changed
          
-         if [ $diffs -ne 0 ]
+         if [ $diffs -ne 0 -a "$verbose" ]
          then
             echo ==========
             echo Changes:
@@ -320,7 +317,10 @@ then
       then
          echo "Creating squashfs compressed file $bn..."
          Quiet rm $out
-         nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         if [ "$verbose" ]
+         then nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         else Quiet nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         fi
          rtn=1  # Created squashfs file
       else
          echo "Mksquashfs not needed for $bn."
