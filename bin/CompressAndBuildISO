@@ -162,9 +162,9 @@ then
       create_gobo_package "$package" && toolswhichneedmake="$toolswhichneedmake $package"
 
       # Remove old snapshots of the GoboLinux packages from ROLayer
-      ls "${root}/Output/ROLayer/Programs/$package/" 2> /dev/null | grep -v "Settings\|Current\|$today" | while read pkgversion
+      ls "${root}/Output/ROLayer/Programs/$package/" 2> /dev/null | grep -v "Settings\|Current\|Variable\|$today" | while read pkgversion
       do
-         Log_Terse "Removing old snapshot $pkgversion from $package"
+         Log_Normal "Removing old snapshot $pkgversion from $package"
          rm -rf -- "${root}/Output/ROLayer/Programs/$package/$pkgversion"
       done
    done
