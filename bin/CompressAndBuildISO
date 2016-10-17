@@ -140,7 +140,7 @@ function create_gobo_package() {
 #############################################################################
 if [ "$start_at" -le "$STAGE_ROLAYER" ] && [ "$stop_at" -ge "$STAGE_ROLAYER" ]
 then
-   echo "=> ROLayer stage started"
+   Log_Normal "=> ROLayer stage started"
 
    if ! [ -e LocalGit -a -e Packages -a -e Archives ]
    then
@@ -169,8 +169,7 @@ then
       done
    done
 
-   echo
-   echo "Building root..."
+   Log_Normal "Building root..."
    cd "$root"
    unset buildrootopts
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
@@ -180,7 +179,6 @@ then
    in_rolayer make -C Programs/Scripts/${today}-GIT/ clean
    in_rolayer make -C Programs/Scripts/${today}-GIT/ python
 
-   echo
    Log_Normal "Installing Aliens"
 
    # Must bind-mount so that the union-mount doesn't deadlock
@@ -258,7 +256,7 @@ then
    echo "Removing Git files..."
    find Output/ROLayer/$filesdir -type d -name .git | xargs rm -rf
 
-   echo "=> ROLayer stage done"
+   Log_Normal "=> ROLayer stage done"
 fi
 
 #############################################################################
