@@ -186,10 +186,6 @@ then
    mkdir -p "${root}/Output/ROLayer/System/Aliens-bindmount"
    mount -o bind "${root}/Output/ROLayer/System/Aliens/" "${root}/Output/ROLayer/System/Aliens-bindmount"
 
-   # Borrow resolv.conf from the host so that we have network access inside the ROLayer
-   mv "${root}/Output/ROLayer/System/Settings/resolv.conf" "${root}/Output/ROLayer/System/Settings/resolv.conf.orig"
-   cp /etc/resolv.conf "${root}/Output/ROLayer/System/Settings/resolv.conf"
-
    exec 3<> "$datadir/Aliens-Packages-List"
    while read line <&3
    do
@@ -215,7 +211,6 @@ then
       umount "${root}/Output/ROLayer/System/Aliens"
    done
 
-   mv "${root}/Output/ROLayer/System/Settings/resolv.conf.orig" "${root}/Output/ROLayer/System/Settings/resolv.conf"
    umount "${root}/Output/ROLayer/System/Aliens-bindmount"
    rmdir "${root}/Output/ROLayer/System/Aliens-bindmount"
 
