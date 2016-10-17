@@ -112,7 +112,15 @@ EOF
    return $ret
 }
 
-function create_gobo_package() {
+function create_gobo_package_from_programs() {
+   local package="$1"
+   local tarball=$package--${today}-GIT--$arch.tar.bz2
+   Quiet pushd "${root}/Output/ROLayer/Programs/"
+   tar cjpf "$packages/$tarball" $package/${today}-GIT
+   Quiet popd
+}
+
+function create_gobo_package_from_git() {
    local package="$1"
    local tarball=$package--${today}-GIT--$arch.tar.bz2
    local ret=0
@@ -154,12 +162,11 @@ then
    else tools=""
    fi
 
-   toolswhichneedmake=""
-   cd "$packages"
+   toolswhichneedmake="Scripts"
    for package in $tools 
    do
       # Create a binary package of the GoboLinux tool
-      create_gobo_package "$package" && toolswhichneedmake="$toolswhichneedmake $package"
+      create_gobo_package_from_git "$package" && toolswhichneedmake="$toolswhichneedmake $package"
 
       # Remove old snapshots of the GoboLinux packages from ROLayer
       ls "${root}/Output/ROLayer/Programs/$package/" 2> /dev/null | grep -v "Settings\|Current\|Variable\|$today" | while read pkgversion
@@ -223,8 +230,9 @@ then
       if [ -e Output/ROLayer/Programs/$package/${today}-GIT/Makefile ] && echo "$toolswhichneedmake" | grep -q "$package"
       then
          echo "Rebuilding $package..."
-         in_rolayer make -C Programs/$package/${today}-GIT/ clean
-         in_rolayer make -C Programs/$package/${today}-GIT/
+         in_rolayer make -C Programs/$package/${today}-GIT/ clean >& /dev/null
+         in_rolayer make -C Programs/$package/${today}-GIT/ > /dev/null
+         create_gobo_package_from_programs "$package"
          # Symlink it
          goboPrefix="$root/Output/ROLayer" \
          LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$root/Output/ROLayer/lib" \
