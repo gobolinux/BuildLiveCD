@@ -182,11 +182,10 @@ then
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
 
-   # The Aliens script needs to import Python modules from the Scripts package
-   in_rolayer make -C Programs/Scripts/${today}-GIT/ clean
-   in_rolayer make -C Programs/Scripts/${today}-GIT/ python
-
    Log_Normal "Installing Aliens"
+   # The Aliens script needs to import Python modules from the Scripts package
+   in_rolayer make -C /Programs/Scripts/${today}-GIT/ clean >& /dev/null
+   in_rolayer make -C /Programs/Scripts/${today}-GIT/ python > /dev/null
 
    # Must bind-mount so that the union-mount doesn't deadlock
    mkdir -p "${root}/Output/ROLayer/System/Aliens/"
@@ -211,7 +210,7 @@ then
       if ! in_rolayer Alien --met "${alien}" ${version} > /dev/null
       then
          echo "Installing ${alien}"
-         in_rolayer Alien --install "${alien}" >/dev/null
+         in_rolayer Alien --install "${alien}" ${version} >/dev/null
       else
          echo "Keeping ${alien} $(in_rolayer Alien --getversion "${alien}")"
       fi
@@ -240,24 +239,6 @@ then
          ${scriptsdir}/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=skip --no-requirements $package ${today}-GIT
       fi
    done
-
-   echo "Coping $filesdir from LocalGit..."
-   # Add few items to rolayer
-   for directory in Wallpapers
-   do
-      if ! diff --recursive --exclude=.git "LocalGit/files/$directory" "Output/ROLayer/$filesdir/$directory" &> /dev/null
-      then
-         echo "Updating /$filesdir/$directory"
-         rm -rf "Output/ROLayer/$filesdir/$directory"
-         cp -a "LocalGit/files/$directory" "Output/ROLayer/$filesdir"
-      else
-         echo "Keeping $filesdir/$directory"
-      fi
-   done
-
-   # Clean Git files from ROLayer
-   echo "Removing Git files..."
-   find Output/ROLayer/$filesdir -type d -name .git | xargs rm -rf
 
    Log_Normal "=> ROLayer stage done"
 fi
@@ -419,29 +400,29 @@ then
       exit 1
    fi
 
-   #Rebuild initrd
+   # Rebuild initrd
    initrd_dir=Output/InitRD
 
-   cd Archives/
+   Quiet pushd Archives
    for package in InitRDScripts
    do
       echo "Packing $package Git snapshot..."
       tarball=$package--${today}-GIT--$arch.tar.bz2
-      rm -rf $package
-      rm -f $package--*
+      rm -rf "$package" "$package"--*
       mkdir -p $package/${today}-GIT
       cp -a $localgit/tools/$package/* $package/${today}-GIT
-      cd $package/${today}-GIT
+
+      Quiet pushd $package/${today}-GIT
       [ -e Makefile ] && make > /dev/null
       find -type d -name .git | xargs rm -rf 
-      cd ..
-      ln -nfs ${today}-GIT Current
-      cd ..
+      ln -nfs ${today}-GIT ../Current
+      Quiet popd
+
       rm -f $tarball
       tar cjpf $tarball $package
       rm -rf $package
    done
-   cd $root
+   Quiet popd
 
    unset makeinitrdopts 
    [ "$usesystemindex" ] && makeinitrdopts="--use-system-index"
