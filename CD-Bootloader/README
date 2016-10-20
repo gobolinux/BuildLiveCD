@@ -9,7 +9,7 @@ This CD is compressed as a set of SquashFS images. To access its contents:
 
   * In addition, you may boot from USB flash devices by copying the ISO file to
     the flash device using a tool such as 'dd':
-    $ dd if=GoboLinux-015-x86_64.iso of=/dev/<flash_device>
+    $ dd if=GoboLinux-016-x86_64.iso of=/dev/<flash_device>
 
 
 For more information about SquashFS, see
