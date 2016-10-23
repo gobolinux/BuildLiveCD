@@ -316,10 +316,11 @@ then
       if [ ! -e "$out" ] || [ $diffs -gt 0 ] || ld_so_cache_changed
       then
          echo "Creating squashfs compressed file $bn..."
+         compressor="-comp xz -Xbcj x86"
          Quiet rm $out
          if [ "$verbose" ]
-         then nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
-         else Quiet nice -20 mksquashfs $dirs "$out" -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         then nice -20 mksquashfs $dirs "$out" $compressor -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
+         else Quiet nice -20 mksquashfs $dirs "$out" $compressor -noappend -no-sparse -keep-as-directory ${blacklist:+-wildcards -e $blacklist}
          fi
          rtn=1  # Created squashfs file
       else
