@@ -236,6 +236,11 @@ then
          ${scriptsdir}/bin/SymlinkProgram --relative --terse --no-follow --unmanaged=skip --no-requirements $package ${today}-GIT
       fi
    done
+   # Move Scripts executables from src/ into bin/
+   for i in $(find "$scriptsdir"/src -type f -executable)
+   do
+       mv -v $i $(dirname $(dirname $i))/bin
+   done
 
    Log_Normal "=> ROLayer stage done"
 fi
