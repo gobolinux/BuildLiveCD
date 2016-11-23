@@ -451,7 +451,20 @@ then
    md5sum isolinux/kernel isolinux/initrd *.squashfs >md5sums
    Quiet popd   
    iso_name="Output/GoboLinux-NoVersion.iso"
-   measure_time nice -20 mkisofs -R -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -input-charset utf-8 -appid "GoboLinux Live Installer" -V "GoboLinux Live Installer" -publisher "GoboLinux.org" -p "Gobo Himself" Output/ISO  > $iso_name
+   measure_time nice -20 \
+       mkisofs \
+       -R \
+       -b isolinux/isolinux.bin \
+       -c isolinux/boot.cat \
+       -no-emul-boot \
+       -boot-load-size 4 \
+       -boot-info-table \
+       -input-charset utf-8 \
+       -appid "GoboLinux Live Installer" \
+       -V "GoboLinux Live Installer" \
+       -publisher "GoboLinux.org" \
+       -p "Gobo Himself" \
+       Output/ISO  > $iso_name
    isohybrid --uefi "$iso_name"
    echo "=> ISO stage done"
 fi
