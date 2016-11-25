@@ -1,5 +1,8 @@
 #!/bin/bash
 
+scriptName="ChrootEnvironment"
+source $(dirname $0)/CompatFunctions
+
 if [ ! -d "Output/ROLayer" ]
 then
    echo "Error: Output/ROLayer doesn't exist."
@@ -13,44 +16,45 @@ then
     exec sudo -u "#0" $0 $*
 fi
 
-echo "Unionfs mounting layers."
-
 chroot_layers=(
    "Output/RWLayer=rw"
    "Output/ROLayer=ro"
 )
 unionfs_dirs=`echo "${chroot_layers[@]}" | tr " " ":"`
 mp="Output/Environment"
-mkdir -p Output/RWLayer
+mkdir -p Output/RWLayer/Data/Variable/tmp
 mkdir -p $mp
 
-echo unionfs -o "dirs=${unionfs_dirs}" ${mp}
+Log_Normal "Unionfs mounting layers."
 unionfs -o "dirs=${unionfs_dirs}" ${mp} || { echo Error mounting Output/Environment; exit 1; }
 
 # Convenience access to directories from the host environment
 mkdir -p Output/Chroot_Mount_CD-ROM
-echo "Binding ${mp}/Mount/CD-ROM ..."
 mount -o bind Output/Chroot_Mount_CD-ROM ${mp}/Mount/CD-ROM
-echo "        ${mp}/System/Kernel/Devices ..."
-mount -o bind /System/Kernel/Devices ${mp}/System/Kernel/Devices
-echo "        ${mp}/System/Kernel/Status ..."
-mount -o bind /System/Kernel/Status ${mp}/System/Kernel/Status
+mount -o bind /dev ${mp}/System/Kernel/Devices
+mount -o bind /proc ${mp}/System/Kernel/Status
 
-echo "Chrooting into ${mp} "
 chroot ${mp} ldconfig
-chroot ${mp} /bin/bash
+if [ $# = 1 ]
+then
+   Log_Normal "Chrooting into ${mp}"
+   chroot ${mp} /bin/bash
+else
+   chroot ${mp} "$@"
+fi
 sync
 
 #####################################################################
 
-echo "Cleaning up /tmp..."
+Log_Verbose "Cleaning up /tmp..."
 rm -fr -- ${mp}/tmp/*
+rmdir Output/RWLayer/Data/Variable/tmp 2> /dev/null
 
-echo "Unmounting:"
+Log_Verbose "Unmounting:"
 mp_path=`readlink -f ${mp}`
 cat /proc/mounts | tac | cut -d' ' -f2 | grep $mp_path | while read dir
 do
-   echo "  ${dir}"
+   Log_Verbose "  ${dir}"
    umount "${dir}"
 done
 
