@@ -1,5 +1,6 @@
 #!/bin/bash
 
+scriptName="CompressAndBuildISO"
 source $(dirname $0)/CompatFunctions
 
 helpOnNoArguments=no
@@ -452,23 +453,37 @@ then
    Quiet popd
 
    echo "Generate EFI application"
-   rolayer="${root}/Output/ROLayer"
-   grubdir="$rolayer/Programs/GRUB-EFI/Current"
+   rwlayer="${root}/Output/RWLayer"
    efiapp_name="Output/ISO/isolinux/BOOTx64.EFI"
-   $grubdir/bin/grub-mkstandalone-efi \
-     -d "$grubdir/lib/grub/x86_64-efi" \
+   cp "$datadir/grub-efi.cfg" "$rwlayer/"
+
+   $(dirname $0)/ChrootEnvironment grub-mkstandalone-efi \
+     -d "/lib/grub/x86_64-efi" \
      -O x86_64-efi \
      --modules="part_gpt part_msdos iso9660 all_video efi_gop efi_uga gfxterm gettext font" \
      --fonts="unicode" \
      --themes="" \
-     -o "$efiapp_name" \
+     -o "/$(basename $efiapp_name)" \
      --compress=gz \
-     "boot/grub/grub.cfg=$datadir/grub-efi.cfg" || exit 1
+     "boot/grub/grub.cfg=/grub-efi.cfg"
+   rm -f "$rwlayer/grub-efi.cfg"
+   mv "$rwlayer/$(basename $efiapp_name)" "$efiapp_name" || exit 1
+
+   echo "Create EFI boot image"
+   efi_mp=`mktemp -d /tmp/efiboot_XXXXX`
+   dd if=/dev/zero of=Output/ISO/isolinux/efiboot.img bs=1M count=16
+   /sbin/mkfs.fat -F 16 -n "EFI_BOOT" Output/ISO/isolinux/efiboot.img
+   mount -t vfat Output/ISO/isolinux/efiboot.img "$efi_mp"
+   mkdir -p "$efi_mp/EFI/BOOT/"
+   cp "$efiapp_name" "$efi_mp/EFI/BOOT/"
+   umount "$efi_mp"
+   rmdir "$efi_mp"
+   rm -f "$efiapp_name"
 
    echo "Generate ISO"
-   iso_name="Output/GoboLinux-NoVersion.iso"
+   iso_name="$PWD/Output/GoboLinux-NoVersion.iso"
    measure_time nice -20 \
-       mkisofs \
+       genisoimage \
        -R \
        -b isolinux/isolinux.bin \
        -c isolinux/boot.cat \
@@ -480,9 +495,7 @@ then
        -V "GoboLinux Live Installer" \
        -publisher "GoboLinux.org" \
        -p "Gobo Himself" \
-       -eltorito-alt-boot \
-       -eltorito-platform 0xef \
-       -eltorito-boot "$efiapp_name" \
+       -eltorito-alt-boot -e isolinux/efiboot.img -no-emul-boot \
        Output/ISO  > $iso_name
    isohybrid --uefi "$iso_name"
    echo "=> ISO stage done"
