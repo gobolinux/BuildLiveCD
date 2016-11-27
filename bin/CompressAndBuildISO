@@ -476,6 +476,7 @@ then
    mount -t vfat Output/ISO/isolinux/efiboot.img "$efi_mp"
    mkdir -p "$efi_mp/EFI/BOOT/"
    cp "$efiapp_name" "$efi_mp/EFI/BOOT/"
+   cp "$datadir/GoboLinuxVolumeIcon.icns"  "$efi_mp/.VolumeIcon.icns"
    umount "$efi_mp"
    rmdir "$efi_mp"
    rm -f "$efiapp_name"
