@@ -85,7 +85,10 @@ function unpack_scripts() {
       GrepReplace 'conflocations=(' \
                   'conflocations=( "$(dirname $scriptPath)/Resources/Defaults/Settings/Scripts"' \
                   $(scripts_dir)/Functions/GoboLinux
-      make -C $(scripts_dir)/src > /dev/null
+      if [ -d "$(scripts_dir)/src" ]
+      then
+         make -C $(scripts_dir)/src > /dev/null
+      fi
       mv $(compile_dir)/bin/PrepareProgram $(scripts_dir)/bin
       rm -rf /tmp/Compile
    fi

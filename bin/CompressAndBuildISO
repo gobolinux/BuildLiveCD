@@ -91,11 +91,12 @@ function measure_time() {
 
 function in_rolayer() {
    local rolayer="${root}/Output/ROLayer"
-   local pythonversion=$(basename ${rolayer}/Programs/Scripts/${today}-GIT/lib/python*)
+   local scriptsVersion=$(ls ${rolayer}/Programs/Scripts/ | grep -v "Current\|Settings\|Variable")
+   local pythonversion=$(basename ${rolayer}/Programs/Scripts/${scriptsVersion}/lib/python*)
    cat << EOF > "${rolayer}/tmp/in_rolayer.sh"
-export "PYTHONPATH=$PYTHONPATH:/Programs/Scripts/${today}-GIT/lib/$pythonversion/site-packages"
-export "PATH=$PATH:/Programs/Scripts/${today}-GIT/bin"
-source "/Programs/Scripts/${today}-GIT/bin/GoboPath"
+export "PYTHONPATH=$PYTHONPATH:/Programs/Scripts/${scriptsVersion}/lib/$pythonversion/site-packages"
+export "PATH=$PATH:/Programs/Scripts/${scriptsVersion}/bin"
+source "/Programs/Scripts/${scriptsVersion}/bin/GoboPath"
 source "/System/Environment/Cache"
 $@
 EOF
@@ -160,10 +161,14 @@ then
 
    if [ -e $datadir/Packages-List-GoboLinuxTools-Git ]
    then tools=`cat $datadir/Packages-List-GoboLinuxTools-Git`
-   else tools=""
+   else tools=
    fi
 
-   toolswhichneedmake="Scripts"
+   if echo "$tools" | grep -q Scripts
+   then toolswhichneedmake="Scripts"
+   else toolswhichneedmake=
+   fi
+
    for package in $tools 
    do
       # Create a binary package of the GoboLinux tool
@@ -182,10 +187,16 @@ then
    [ "$usesystemindex" ] && buildrootopts="--use-system-index"
    BuildRoot --root="Output/ROLayer" --packagedir="Packages" $buildrootopts $datadir/Packages-List-* || exit 1
 
+   scriptsVersion=$(ls ${root}/Output/ROLayer/Programs/Scripts/ | grep -v "Current\|Settings\|Variable")
+   scriptsdir="$root/Output/ROLayer/Programs/Scripts/${scriptsVersion}"
+   
    Log_Normal "Installing Aliens"
-   # The Aliens script needs to import Python modules from the Scripts package
-   in_rolayer make -C /Programs/Scripts/${today}-GIT/ clean >& /dev/null
-   in_rolayer make -C /Programs/Scripts/${today}-GIT/ python > /dev/null
+   if [ -e "$scriptsdir/Makefile" ]
+   then
+      # The Aliens script needs to import Python modules from the Scripts package
+      in_rolayer make -C /Programs/Scripts/$scriptsVersion/ clean >& /dev/null
+      in_rolayer make -C /Programs/Scripts/$scriptsVersion/ python > /dev/null
+   fi
 
    # Must bind-mount so that the union-mount doesn't deadlock
    mkdir -p "${root}/Output/ROLayer/System/Aliens/"
@@ -220,7 +231,6 @@ then
    umount "${root}/Output/ROLayer/System/Aliens-bindmount"
    rmdir "${root}/Output/ROLayer/System/Aliens-bindmount"
 
-   scriptsdir="$root/Output/ROLayer/Programs/Scripts/${today}-GIT"
    for package in $tools
    do
       # we build the tools again to ensure they are prepared to the LiveCD environment
@@ -238,7 +248,7 @@ then
       fi
    done
    # Move Scripts executables from src/ into bin/
-   for i in $(find "$scriptsdir"/src -type f -executable)
+   for i in $(find "$scriptsdir"/src -type f -executable 2> /dev/null)
    do
        mv -v $i $(dirname $(dirname $i))/bin
    done
@@ -389,7 +399,7 @@ then
 
    umount Output/Environment
    rmdir Output/Environment
-   rm -rf $tmp_mp
+   rm -rf $tmp_mp 2> /dev/null
    echo "=> SquashFS stage done"
 fi
 
