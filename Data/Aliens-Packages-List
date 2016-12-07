@@ -2,3 +2,8 @@ CPAN:XML::Parser
 CPAN:Locale::gettext
 LuaRocks:lgi
 LuaRocks:luafilesystem
+LuaRocks:gobo-awesome
+LuaRocks:gobo-awesome-sound
+LuaRocks:gobo-awesome-battery
+LuaRocks:gobo-awesome-alttab
+LuaRocks:gobo-awesome-gobonet
