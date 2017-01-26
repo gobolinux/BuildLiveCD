@@ -354,6 +354,8 @@ then
    # compress the uncompressed files into squashfs files
    mkdir -p Output/ISO
    Quiet pushd Output/Environment
+   rm -rf "$root/Output/ROLayer/$filesdir/Variable/tmp/*"
+   rm -rf "$root/Output/RoLayer/$filesdir/Variable/tmp/.[^.]*"
    measure_time mksquashfs_on_demand $root/Output/ISO/GoboLinux-files.squashfs $filesdir
 
    for i in $datadir/Packages-List-*; do 
@@ -385,7 +387,7 @@ then
       rmdir $empty_dir
    done
 
-   contents="$(ls --hide="$filesdir" --hide="Programs" --hide="Users" | tr -s '\n' ' ')"
+   contents="$(ls --hide="$filesdir" --hide="Programs" --hide="Users" --hide="home" | tr -s '\n' ' ')"
    measure_time mksquashfs_on_demand $root/Output/ISO/GoboLinux-rest.squashfs "$contents" "" "System/Aliens*"
    measure_time mksquashfs_on_demand $root/Output/ISO/GoboLinux-aliens.squashfs "System/Aliens" "" ""
    if [ $? == 1 ]
