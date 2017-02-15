@@ -17,8 +17,8 @@ then
 fi
 
 chroot_layers=(
-   "Output/RWLayer=rw"
-   "Output/ROLayer=ro"
+   "Output/RWLayer=RW"
+   "Output/ROLayer=RO"
 )
 unionfs_dirs=`echo "${chroot_layers[@]}" | tr " " ":"`
 mp="Output/Environment"
@@ -26,7 +26,7 @@ mkdir -p Output/RWLayer/Data/Variable/tmp
 mkdir -p $mp
 
 Log_Normal "Unionfs mounting layers."
-unionfs -o "dirs=${unionfs_dirs}" ${mp} || { echo Error mounting Output/Environment; exit 1; }
+unionfs -o "hide_meta_files,cow,dirs=${unionfs_dirs}" ${mp} || { echo Error mounting Output/Environment; exit 1; }
 
 # Convenience access to directories from the host environment
 mkdir -p Output/Chroot_Mount_CD-ROM
