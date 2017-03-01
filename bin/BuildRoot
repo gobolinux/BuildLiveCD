@@ -176,7 +176,7 @@ function install_package() {
    [ -d "$dsettings" ] && cp -a "$dsettings" "$name/"
    if [ -d "$dvariable" ]
    then
-      cp -rf "$dvariable"/* $root/$vardir
+      cp -af "$dvariable"/* $root/$vardir
       ln -s $vardir "$name/Variable"
    fi
 

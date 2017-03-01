@@ -183,7 +183,7 @@ echo "=> Building the CD bootloader..."
 if [ ! -d "$output/ISO/isolinux" ]
 then
    mkdir -p $output/ISO/isolinux
-   cp -R "$cdbootloaderdir/"* $output/ISO
+   cp -a "$cdbootloaderdir/"* $output/ISO
    find $output/ISO -name ".git" -type d | xargs rm -rf
 fi
 
