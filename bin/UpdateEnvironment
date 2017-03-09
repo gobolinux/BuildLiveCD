@@ -139,6 +139,7 @@ function InstallISOLINUX() {
            cp -v ${bios_loaders[@]} "$installDir/isolinux"
            cp -v ${bios_modules[@]} "$installDir/isolinux/bios"
            sed -i 's,__ARCH__,bios,g' "$installDir/isolinux/isolinux.cfg"
+           sed -i 's,__ARCH__,bios,g' "$installDir/isolinux/advanced.cfg"
            ;;
        TODO_x86_64_EFI_mode)
            # TODO: we need to create an .img file to pass to mkisofs if we are to boot using pure EFI
@@ -146,6 +147,7 @@ function InstallISOLINUX() {
            cp -v ${efi_loaders[@]} "$installDir/isolinux"
            cp -v ${efi_modules[@]} "$installDir/isolinux/efi64"
            sed -i 's,__ARCH__,efi64,g' "$installDir/isolinux/isolinux.cfg"
+           sed -i 's,__ARCH__,efi64,g' "$installDir/isolinux/advanced.cfg"
            ;;
        *)
            echo "Error: unsupported architecture $(uname -m)."
