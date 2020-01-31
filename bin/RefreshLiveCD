@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+
+# Create a new ISO based on a reference ISO + a set of tarballs.
+# Written by Lucas C. Villa Real <lucasvr@gobolinux.org>
+# Released under the GNU GPL version 2.
+
+import os
+import sys
+import shutil
+import tarfile
+import subprocess
+from glob import glob
+
+class MountError(Exception):
+    def __init__(self, expression, message):
+        self.expression = expression
+        self.message = message
+
+class BaseImageFile:
+    def mount(self, image_file, mountpoint):
+        info = subprocess.run(["mount", "-o", "loop", image_file, mountpoint])
+        if info.returncode != 0:
+            raise MountError(" ".join(info.args), f"Error mounting {image_file}")
+
+    def unmount(self, mountpoint):
+        info = subprocess.run(["umount", mountpoint])
+        if info.returncode != 0:
+            raise MountError(" ".join(info.args), f"Error unmounting {mountpoint}")
+
+class ISOFile(BaseImageFile):
+    def __init__(self, iso_file):
+        self.iso_file = iso_file
+        self.mountpoint = ""
+        self.squashfs_dirs = []
+    
+    def mount(self, mountpoint):
+        self.mountpoint = mountpoint
+        return super().mount(self.iso_file, self.mountpoint)
+
+    def unmount(self):
+        return super().unmount(self.mountpoint)
+
+    def extractFiles(self, dest_dir, squashfs_mountpoint):
+        if not os.path.exists(f"{dest_dir}/isolinux"):
+            subprocess.run(["cp", "-a", f"{self.mountpoint}/isolinux", f"{dest_dir}/isolinux"])
+
+        for squash_file in glob(f"{self.mountpoint}/*.squashfs"):
+            print("--> Extracting {}".format(os.path.basename(squash_file)))
+            squash = SquashFile(squash_file)
+            squash.mount(squashfs_mountpoint)
+            try:
+                squash_dest_dir = f"{dest_dir}/{os.path.splitext(os.path.basename(squash_file))[0]}"
+                squash.extractFiles(squash_dest_dir)
+            except FileExistsError:
+                raise
+            finally:
+                squash.unmount()
+
+    def create(self, out_dir):
+        exclude_list = []
+        for path in glob(f"{out_dir}/*"):
+            if os.path.basename(path) == "isolinux":
+                continue
+            if os.path.isdir(path):
+                squash = SquashFile(f"{out_dir}/{os.path.basename(path)}.squashfs")
+                squash.create(glob(f"{path}/*"))
+                exclude_list += ["-m", os.path.basename(path)]
+
+        work_dir = os.path.dirname(out_dir)
+        iso_file = os.path.join(work_dir, "GoboLinux.iso")
+        efiboot_file = "isolinux/efiboot.img"
+
+        print("--> Generating ISO file...")
+        cmd = [
+            "genisoimage",
+            "-R",
+            "-quiet",
+            "-b", "isolinux/isolinux.bin",
+            "-c", "isolinux/boot.cat",
+            "-no-emul-boot",
+            "-boot-load-size", "4",
+            "-boot-info-table",
+            "-input-charset", "utf-8",
+            "-eltorito-alt-boot",
+            "-eltorito-boot", efiboot_file,
+            "-no-emul-boot",
+            "-appid", "GoboLinux Live Installer",
+            "-V", "GoboLinux Live Installer",
+            "-publisher", "GoboLinux.org",
+            "-p", "Gobo Himself",
+            "-output", iso_file
+        ] + exclude_list + [
+            out_dir
+        ]
+        subprocess.run(cmd)
+
+
+class SquashFile(BaseImageFile):
+    def __init__(self, squash_file):
+        self.squash_file = squash_file
+
+    def mount(self, mountpoint):
+        self.mountpoint = mountpoint
+        return super().mount(self.squash_file, self.mountpoint)
+
+    def unmount(self):
+        return super().unmount(self.mountpoint)
+
+    def extractFiles(self, dest_dir):
+        if not os.path.exists(dest_dir):
+            subprocess.run(["cp", "-a", self.mountpoint, dest_dir])
+
+    def create(self, src_dirs):
+        # TODO: improve rebuild test
+        if not os.path.exists(self.squash_file):
+            cmd = ["mksquashfs"] + src_dirs + [self.squash_file]
+            cmd += ["-comp", "zstd", "-noappend", "-no-sparse", "-keep-as-directory"]
+            subprocess.run(cmd)
+
+class BinaryPackage:
+    def __init__(self, package_file):
+        self.package_file = package_file
+
+    def programName(self):
+        return os.path.basename(self.package_file).split("--")[0]
+
+    def programVersion(self):
+        return os.path.basename(self.package_file).split("--")[1]
+
+    def priorVersion(self, programs_dir):
+        path = f"{programs_dir}/{self.programName()}"
+        versions = glob(f"{path}/*")
+        for ignore_version in ["Current", "Variable", "Settings"]:
+            try:
+                versions.remove(ignore_version)
+            except ValueError:
+                pass
+        if len(versions) != 1:
+            print(f"Warning: more than one version exists at {path}")
+        return sorted(versions)[0]
+
+    def merge(self, squashfs_dirs):
+        name = self.programName()
+        for path in squashfs_dirs:
+            if True in [x.endswith("/Programs") for x in glob(f"{path}/*")]:
+                if os.path.exists(f"{path}/Programs/{name}"):
+                    # The program was already featured on a SquashFS file on
+                    # the previous ISO.
+                    return self.__merge(path)
+
+        # Found no existing entry for this package, so move it to the generic
+        # Packages-List-Other directory.
+        other_dir = os.path.join(os.path.dirname(squashfs_dirs[0]), "Packages-List-Other")
+        os.makedirs(f"{other_dir}/Programs", exist_ok=True)
+        return self.__merge(other_dir)
+
+    def __merge(self, squashfs_dir):
+        name, version = self.programName(), self.programVersion()
+        programs_dir = f"{squashfs_dir}/Programs"
+        new_path = f"{programs_dir}/{name}/{version}"
+        old_path = sorted(glob(f"{programs_dir}/{name}/*"))
+        old_path = old_path[0] if len(old_path) > 0 else None
+        current_symlink = f"{programs_dir}/{name}/Current"
+
+        if os.path.exists(new_path):
+            path_timestamp = os.stat(new_path).st_ctime
+            package_timestamp = os.stat(self.package_file).st_ctime
+            if path_timestamp < package_timestamp:
+                print(f"Found outdated {name} in {new_path}")
+                shutil.rmtree(new_path)
+                self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+            else:
+                print(f"Found up-to-date {name} in {new_path}")
+        elif old_path is not None:
+            print(f"Found prior version of {name} in {old_path}")
+            shutil.rmtree(old_path)
+            self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+        elif old_path is None:
+            print(f"Merging {name} into {squashfs_dir}")
+            self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+
+    def __uncompressAndLink(self, programs_dir, new_path, current_symlink):
+        with tarfile.open(self.package_file, "r:bz2") as tar:
+            tar.extractall(programs_dir)
+
+        if os.path.lexists(current_symlink):
+            os.unlink(current_symlink)
+        new_version = os.path.basename(new_path)
+        os.symlink(new_version, current_symlink)
+
+def main():
+    if len(sys.argv) < 3:
+        print(f"Syntax: {sys.argv[0]} <iso_file> <work_directory> [packages_directory]")
+        sys.exit(1)
+
+    iso_file = sys.argv[1]
+    work_dir = sys.argv[2]
+    packages_dir = sys.argv[3] if len(sys.argv) == 4 else None
+    iso_mountpoint = os.path.join(work_dir, "mnt_iso")
+    squashfs_mountpoint = os.path.join(work_dir, "mnt_squashfs")
+    for path in [iso_mountpoint, squashfs_mountpoint, "old_release", "new_release"]:
+        os.makedirs(os.path.join(work_dir, path), exist_ok=True)
+
+    iso = ISOFile(iso_file)
+    iso.mount(iso_mountpoint)
+    try:
+        old_dir = os.path.join(work_dir, "old_release")
+        new_dir = os.path.join(work_dir, "new_release")
+        iso.extractFiles(old_dir, squashfs_mountpoint)
+
+        old_tree_entries = glob(f"{old_dir}/*")
+        new_tree_entries = [x for x in glob(f"{new_dir}/*") if os.path.isdir(x) and not x.endswith("Other")]
+        if len(old_tree_entries) != len(new_tree_entries):
+            print("-> Creating a copy of the reference directory")
+            for path in old_tree_entries:
+                subprocess.run(["cp", "-al", path, new_dir])
+
+        if packages_dir is not None:
+            print("--> Processing packages")
+            squashfs_dirs = [os.path.splitext(x)[0] for x in glob(f"{new_dir}/*.squashfs")]
+            for path in glob(f"{packages_dir}/*.bz2"):
+                p = BinaryPackage(path)
+                p.merge(squashfs_dirs)
+
+        new_iso = ISOFile(f"{work_dir}/new_release.iso")
+        new_iso.create(new_dir)
+    finally:
+        iso.unmount()
+
+if __name__ == "__main__":
+    main()
