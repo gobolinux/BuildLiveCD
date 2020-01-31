@@ -72,9 +72,8 @@ class ISOFile(BaseImageFile):
 
         print("--> Generating ISO file...")
         cmd = [
-            "genisoimage",
+            "xorrisofs",
             "-R",
-            "-quiet",
             "-b", "isolinux/isolinux.bin",
             "-c", "isolinux/boot.cat",
             "-no-emul-boot",
@@ -85,7 +84,7 @@ class ISOFile(BaseImageFile):
             "-eltorito-boot", efiboot_file,
             "-no-emul-boot",
             "-appid", "GoboLinux Live Installer",
-            "-V", "GoboLinux Live Installer",
+            "-V", "GOBOLINUX_LIVE_INSTALLER",
             "-publisher", "GoboLinux.org",
             "-p", "Gobo Himself",
             "-output", iso_file
@@ -157,22 +156,27 @@ class BinaryPackage:
     def __merge(self, squashfs_dir):
         name, version = self.programName(), self.programVersion()
         programs_dir = f"{squashfs_dir}/Programs"
+        current_symlink = f"{programs_dir}/{name}/Current"
+
         new_path = f"{programs_dir}/{name}/{version}"
         old_path = sorted(glob(f"{programs_dir}/{name}/*"))
         old_path = old_path[0] if len(old_path) > 0 else None
-        current_symlink = f"{programs_dir}/{name}/Current"
+
+        new_list = new_path[new_path.find("Packages-List"):].split("/")[0]
+        old_list = old_path[old_path.find("Packages-List"):].split("/")[0] if old_path else None
 
         if os.path.exists(new_path):
             path_timestamp = os.stat(new_path).st_ctime
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
-                print(f"Found outdated {name} in {new_path}")
+                print(f"Replacing outdated package {name} in {new_list}")
                 shutil.rmtree(new_path)
                 self.__uncompressAndLink(programs_dir, new_path, current_symlink)
             else:
-                print(f"Found up-to-date {name} in {new_path}")
+                print(f"Found up-to-date {name} in {new_list}")
         elif old_path is not None:
-            print(f"Found prior version of {name} in {old_path}")
+            old_version = os.path.basename(os.path.dirname(old_path))
+            print(f"Replacing prior version of {name} ({old_version}) from {old_list}")
             shutil.rmtree(old_path)
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
         elif old_path is None:
@@ -193,13 +197,17 @@ def main():
         print(f"Syntax: {sys.argv[0]} <iso_file> <work_directory> [packages_directory]")
         sys.exit(1)
 
-    iso_file = sys.argv[1]
-    work_dir = sys.argv[2]
-    packages_dir = sys.argv[3] if len(sys.argv) == 4 else None
+    iso_file = os.path.realpath(sys.argv[1])
+    work_dir = os.path.realpath(sys.argv[2])
+    packages_dir = os.path.realpath(sys.argv[3]) if len(sys.argv) == 4 else None
     iso_mountpoint = os.path.join(work_dir, "mnt_iso")
     squashfs_mountpoint = os.path.join(work_dir, "mnt_squashfs")
     for path in [iso_mountpoint, squashfs_mountpoint, "old_release", "new_release"]:
         os.makedirs(os.path.join(work_dir, path), exist_ok=True)
+
+    if packages_dir is not None and not os.path.exists(packages_dir):
+        print(f"Error: packages directory '{packages_dir}' does not exist")
+        sys.exit(1)
 
     iso = ISOFile(iso_file)
     iso.mount(iso_mountpoint)
@@ -216,8 +224,9 @@ def main():
                 subprocess.run(["cp", "-al", path, new_dir])
 
         if packages_dir is not None:
-            print("--> Processing packages")
-            squashfs_dirs = [os.path.splitext(x)[0] for x in glob(f"{new_dir}/*.squashfs")]
+            print("--> Processing tarballs from ".format(new_dir))
+            squashfs_dirs = glob(f"{new_dir}/Packages-List-*") + glob(f"{new_dir}/GoboLinux-*")
+            squashfs_dirs = [x for x in squashfs_dirs if os.path.isdir(x)]
             for path in glob(f"{packages_dir}/*.bz2"):
                 p = BinaryPackage(path)
                 p.merge(squashfs_dirs)
