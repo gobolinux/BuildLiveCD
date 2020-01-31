@@ -6,10 +6,12 @@
 
 import os
 import sys
+import time
 import shutil
 import tarfile
 import subprocess
 from glob import glob
+from datetime import datetime
 
 class MountError(Exception):
     def __init__(self, expression, message):
@@ -124,7 +126,10 @@ class BinaryPackage:
         return os.path.basename(self.package_file).split("--")[0]
 
     def programVersion(self):
-        return os.path.basename(self.package_file).split("--")[1]
+        full_version = os.path.basename(self.package_file).split("--")[1]
+        revision = full_version.rfind("-r")
+        version = full_version if revision == -1 else full_version[:revision]
+        return version
 
     def priorVersion(self, programs_dir):
         path = f"{programs_dir}/{self.programName()}"
@@ -175,7 +180,7 @@ class BinaryPackage:
             else:
                 print(f"Found up-to-date {name} in {new_list}")
         elif old_path is not None:
-            old_version = os.path.basename(os.path.dirname(old_path))
+            old_version = os.path.basename(old_path)
             print(f"Replacing prior version of {name} ({old_version}) from {old_list}")
             shutil.rmtree(old_path)
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
@@ -191,6 +196,23 @@ class BinaryPackage:
             os.unlink(current_symlink)
         new_version = os.path.basename(new_path)
         os.symlink(new_version, current_symlink)
+
+        # Update new_path's last access and modification times
+        now = time.mktime(datetime.now().timetuple())
+        os.utime(new_path, (now, now))
+
+class ISOLinux:
+    def __init__(self, path):
+        self.path = path
+        self.old_kernel_path = f"{self.path}/kernel"
+
+    def updateKernel(self, new_kernel_path):
+        old_timestamp = os.stat(self.old_kernel_path).st_mtime
+        new_timestamp = os.stat(os.path.realpath(new_kernel_path)).st_mtime
+        if old_timestamp < new_timestamp:
+            print("--> Updating ISOLINUX kernel file")
+            os.unlink(self.old_kernel_path)
+            shutil.copy2(new_kernel_path, self.old_kernel_path)
 
 def main():
     if len(sys.argv) < 3:
@@ -212,10 +234,12 @@ def main():
     iso = ISOFile(iso_file)
     iso.mount(iso_mountpoint)
     try:
+        # Extract isolinux and squashfs files from the original ISO
         old_dir = os.path.join(work_dir, "old_release")
         new_dir = os.path.join(work_dir, "new_release")
         iso.extractFiles(old_dir, squashfs_mountpoint)
 
+        # Copy extracted files to the work directory
         old_tree_entries = glob(f"{old_dir}/*")
         new_tree_entries = [x for x in glob(f"{new_dir}/*") if os.path.isdir(x) and not x.endswith("Other")]
         if len(old_tree_entries) != len(new_tree_entries):
@@ -223,13 +247,19 @@ def main():
             for path in old_tree_entries:
                 subprocess.run(["cp", "-al", path, new_dir])
 
+        # Extract new tarballs into their corresponding Packages-List directories
         if packages_dir is not None:
-            print("--> Processing tarballs from ".format(new_dir))
+            print("--> Processing tarballs")
             squashfs_dirs = glob(f"{new_dir}/Packages-List-*") + glob(f"{new_dir}/GoboLinux-*")
             squashfs_dirs = [x for x in squashfs_dirs if os.path.isdir(x)]
             for path in glob(f"{packages_dir}/*.bz2"):
                 p = BinaryPackage(path)
                 p.merge(squashfs_dirs)
+
+        # Update kernel image used by the Live environment
+        kernel_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel"
+        bootloader = ISOLinux(f"{new_dir}/isolinux")
+        bootloader.updateKernel(f"{new_dir}/Packages-List-Base/{kernel_path}")
 
         new_iso = ISOFile(f"{work_dir}/new_release.iso")
         new_iso.create(new_dir)
