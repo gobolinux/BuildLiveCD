@@ -9,6 +9,7 @@ import sys
 import time
 import shutil
 import tarfile
+import tempfile
 import subprocess
 from glob import glob
 from datetime import datetime
@@ -42,36 +43,28 @@ class ISOFile(BaseImageFile):
     def unmount(self):
         return super().unmount(self.mountpoint)
 
-    def extractFiles(self, dest_dir, squashfs_mountpoint):
+    def extractFiles(self, dest_dir):
         if not os.path.exists(f"{dest_dir}/isolinux"):
             subprocess.run(["cp", "-a", f"{self.mountpoint}/isolinux", f"{dest_dir}/isolinux"])
+
+        if os.path.exists(f"{dest_dir}/rootfs"):
+            return
 
         for squash_file in glob(f"{self.mountpoint}/*.squashfs"):
             print("--> Extracting {}".format(os.path.basename(squash_file)))
             squash = SquashFile(squash_file)
-            squash.mount(squashfs_mountpoint)
+            squash_dest_dir = f"{dest_dir}/rootfs"
             try:
-                squash_dest_dir = f"{dest_dir}/{os.path.splitext(os.path.basename(squash_file))[0]}"
                 squash.extractFiles(squash_dest_dir)
             except FileExistsError:
                 raise
-            finally:
-                squash.unmount()
 
     def create(self, out_dir):
-        exclude_list = []
-        for path in glob(f"{out_dir}/*"):
-            if os.path.basename(path) == "isolinux":
-                continue
-            if os.path.isdir(path):
-                squash = SquashFile(f"{out_dir}/{os.path.basename(path)}.squashfs")
-                squash.create(glob(f"{path}/*"))
-                exclude_list += ["-m", os.path.basename(path)]
+        # Main SquashFS file
+        squash = SquashFile(f"{out_dir}/gobolinux-live.squashfs")
+        squash.create(glob(f"{out_dir}/rootfs/*"))
 
-        work_dir = os.path.dirname(out_dir)
-        iso_file = os.path.join(work_dir, "GoboLinux.iso")
         efiboot_file = "isolinux/efiboot.img"
-
         print("--> Generating ISO file...")
         cmd = [
             "xorrisofs",
@@ -89,8 +82,9 @@ class ISOFile(BaseImageFile):
             "-V", "GOBOLINUX_LIVE_INSTALLER",
             "-publisher", "GoboLinux.org",
             "-p", "Gobo Himself",
-            "-output", iso_file
-        ] + exclude_list + [
+            "-m", f"{out_dir}/{os.path.basename(self.iso_file)}",
+            "-m", f"{out_dir}/rootfs",
+            "-output", self.iso_file,
             out_dir
         ]
         subprocess.run(cmd)
@@ -108,8 +102,8 @@ class SquashFile(BaseImageFile):
         return super().unmount(self.mountpoint)
 
     def extractFiles(self, dest_dir):
-        if not os.path.exists(dest_dir):
-            subprocess.run(["cp", "-a", self.mountpoint, dest_dir])
+        cmd = ["unsquashfs", "-f", "-d", dest_dir, self.squash_file]
+        subprocess.run(cmd)
 
     def create(self, src_dirs):
         # TODO: improve rebuild test
@@ -143,22 +137,7 @@ class BinaryPackage:
             print(f"Warning: more than one version exists at {path}")
         return sorted(versions)[0]
 
-    def merge(self, squashfs_dirs):
-        name = self.programName()
-        for path in squashfs_dirs:
-            if True in [x.endswith("/Programs") for x in glob(f"{path}/*")]:
-                if os.path.exists(f"{path}/Programs/{name}"):
-                    # The program was already featured on a SquashFS file on
-                    # the previous ISO.
-                    return self.__merge(path)
-
-        # Found no existing entry for this package, so move it to the generic
-        # Packages-List-Other directory.
-        other_dir = os.path.join(os.path.dirname(squashfs_dirs[0]), "Packages-List-Other")
-        os.makedirs(f"{other_dir}/Programs", exist_ok=True)
-        return self.__merge(other_dir)
-
-    def __merge(self, squashfs_dir):
+    def merge(self, squashfs_dir):
         name, version = self.programName(), self.programVersion()
         programs_dir = f"{squashfs_dir}/Programs"
         current_symlink = f"{programs_dir}/{name}/Current"
@@ -167,25 +146,21 @@ class BinaryPackage:
         old_path = sorted(glob(f"{programs_dir}/{name}/*"))
         old_path = old_path[0] if len(old_path) > 0 else None
 
-        new_list = new_path[new_path.find("Packages-List"):].split("/")[0]
-        old_list = old_path[old_path.find("Packages-List"):].split("/")[0] if old_path else None
-
         if os.path.exists(new_path):
             path_timestamp = os.stat(new_path).st_ctime
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
-                print(f"Replacing outdated package {name} in {new_list}")
+                print(f"Replacing outdated program {name}")
                 shutil.rmtree(new_path)
                 self.__uncompressAndLink(programs_dir, new_path, current_symlink)
             else:
-                print(f"Found up-to-date {name} in {new_list}")
+                print(f"Keeping existing program {name}")
         elif old_path is not None:
-            old_version = os.path.basename(old_path)
-            print(f"Replacing prior version of {name} ({old_version}) from {old_list}")
+            print(f"Replacing outdated program {name}")
             shutil.rmtree(old_path)
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
         elif old_path is None:
-            print(f"Merging {name} into {squashfs_dir}")
+            print(f"Adding program {name}")
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
 
     def __uncompressAndLink(self, programs_dir, new_path, current_symlink):
@@ -222,49 +197,35 @@ def main():
     iso_file = os.path.realpath(sys.argv[1])
     work_dir = os.path.realpath(sys.argv[2])
     packages_dir = os.path.realpath(sys.argv[3]) if len(sys.argv) == 4 else None
-    iso_mountpoint = os.path.join(work_dir, "mnt_iso")
-    squashfs_mountpoint = os.path.join(work_dir, "mnt_squashfs")
-    for path in [iso_mountpoint, squashfs_mountpoint, "old_release", "new_release"]:
-        os.makedirs(os.path.join(work_dir, path), exist_ok=True)
+    os.makedirs(work_dir, exist_ok=True)
 
     if packages_dir is not None and not os.path.exists(packages_dir):
         print(f"Error: packages directory '{packages_dir}' does not exist")
         sys.exit(1)
 
-    iso = ISOFile(iso_file)
-    iso.mount(iso_mountpoint)
-    try:
-        # Extract isolinux and squashfs files from the original ISO
-        old_dir = os.path.join(work_dir, "old_release")
-        new_dir = os.path.join(work_dir, "new_release")
-        iso.extractFiles(old_dir, squashfs_mountpoint)
+    # Extract isolinux and squashfs files from the original ISO
+    with tempfile.TemporaryDirectory() as iso_mountpoint:
+        iso = ISOFile(iso_file)
+        iso.mount(iso_mountpoint)
+        try:
+            iso.extractFiles(work_dir)
+        finally:
+            iso.unmount()
 
-        # Copy extracted files to the work directory
-        old_tree_entries = glob(f"{old_dir}/*")
-        new_tree_entries = [x for x in glob(f"{new_dir}/*") if os.path.isdir(x) and not x.endswith("Other")]
-        if len(old_tree_entries) != len(new_tree_entries):
-            print("-> Creating a copy of the reference directory")
-            for path in old_tree_entries:
-                subprocess.run(["cp", "-al", path, new_dir])
+    # Extract tarballs
+    if packages_dir is not None:
+        print("--> Processing tarballs")
+        for path in glob(f"{packages_dir}/*.bz2"):
+            p = BinaryPackage(path)
+            p.merge(f"{work_dir}/rootfs")
 
-        # Extract new tarballs into their corresponding Packages-List directories
-        if packages_dir is not None:
-            print("--> Processing tarballs")
-            squashfs_dirs = glob(f"{new_dir}/Packages-List-*") + glob(f"{new_dir}/GoboLinux-*")
-            squashfs_dirs = [x for x in squashfs_dirs if os.path.isdir(x)]
-            for path in glob(f"{packages_dir}/*.bz2"):
-                p = BinaryPackage(path)
-                p.merge(squashfs_dirs)
+    # Update kernel image used by the Live environment
+    kernel_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel"
+    bootloader = ISOLinux(f"{work_dir}/isolinux")
+    bootloader.updateKernel(f"{work_dir}/rootfs/{kernel_path}")
 
-        # Update kernel image used by the Live environment
-        kernel_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel"
-        bootloader = ISOLinux(f"{new_dir}/isolinux")
-        bootloader.updateKernel(f"{new_dir}/Packages-List-Base/{kernel_path}")
-
-        new_iso = ISOFile(f"{work_dir}/new_release.iso")
-        new_iso.create(new_dir)
-    finally:
-        iso.unmount()
+    new_iso = ISOFile(f"{work_dir}/gobolinux.iso")
+    new_iso.create(work_dir)
 
 if __name__ == "__main__":
     main()
