@@ -151,22 +151,57 @@ class BinaryPackage:
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
                 print(f"Replacing outdated program {name}")
-                shutil.rmtree(new_path)
+                removed = self.__removeProgram(new_path)
                 self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+                self.__removeBrokenLinks(squashfs_dir, removed)
             else:
                 print(f"Keeping existing program {name}")
         elif old_path is not None:
             print(f"Replacing outdated program {name}")
-            shutil.rmtree(old_path)
+            removed = self.__removeProgram(old_path)
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+            self.__removeBrokenLinks(squashfs_dir, removed)
         elif old_path is None:
             print(f"Adding program {name}")
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+
+    def __removeProgram(self, path):
+        # Remove directory tree
+        removed_files = [x.replace(path, "")[1:] for x in glob(f"{path}/**", recursive=True)]
+        shutil.rmtree(path)
+        return removed_files
+
+    def __removeBrokenLinks(self, squashfs_dir, removed_files):
+        broken_list = []
+        for path in removed_files:
+            # Was this file likely linked to /System/Index?
+            for system_index_dir in ["bin", "include", "lib", "libexec", "share"]:
+                if path.startswith(system_index_dir):
+                    broken_list.append(path)
+                    break
+        # Prevent the argument list from growing too long. We should, ideally, check
+        # the output of `getconf ARG_MAX` and split the list according to the number
+        # of bytes needed to represent its members, but using a predefined chunk size
+        # of 10k file names should work for the most common use cases.
+        chroot = InChroot(squashfs_dir)
+        for chunk in self.__splitList(broken_list, 10000):
+            chroot.exec(["/bin/RemoveBroken"] + chunk)
+
+    def __splitList(self, the_list, n):
+        for i in range(0, len(the_list), n):
+            yield the_list[i:i+n]
 
     def __uncompressAndLink(self, programs_dir, new_path, current_symlink):
         with tarfile.open(self.package_file, "r:bz2") as tar:
             tar.extractall(programs_dir)
 
+        # Symlink program
+        squashfs_dir = os.path.dirname(programs_dir)
+        program_dir = new_path.replace(squashfs_dir, "")
+        chroot = InChroot(squashfs_dir)
+        chroot.symlink(program_dir)
+
+        # Update "Current" symlink
         if os.path.lexists(current_symlink):
             os.unlink(current_symlink)
         new_version = os.path.basename(new_path)
@@ -188,6 +223,84 @@ class ISOLinux:
             print("--> Updating ISOLINUX kernel file")
             os.unlink(self.old_kernel_path)
             shutil.copy2(new_kernel_path, self.old_kernel_path)
+
+class InChroot:
+    def __init__(self, squashfs_dir):
+        self.directory_stack = []
+        self.squashfs_dir = squashfs_dir
+        self.overwrite = "--overwrite"
+        self.relative  = "" # "--relative"
+        self.no_follow = "" # "--no-follow"
+
+    def symlink(self, program_version_path):
+        goboPrefix = self.squashfs_dir
+        goboIndex = f"{goboPrefix}/System/Index"
+        goboExecutables = f"{goboIndex}/bin"
+        goboLibraries = f"{goboIndex}/lib"
+        goboHeaders = f"{goboIndex}/include"
+
+        # Symlink essential directories, then chroot into target and
+        # perform the complete linking process through SymlinkProgram.
+        symlink_map = {
+            f"{program_version_path}/lib": goboLibraries,
+            f"{program_version_path}/bin": goboExecutables,
+            f"{program_version_path}/sbin": goboExecutables,
+            f"{program_version_path}/include": goboHeaders,
+        }
+        for source, target in symlink_map.items():
+            self.__linkDirectory(source, target)
+
+        # Chroot and SymlinkProgram
+        program = program_version_path.split("/")[1]
+        version = program_version_path.split("/")[2]
+        self.exec(["/bin/SymlinkProgram", "-c", "overwrite", program, version])
+
+    def exec(self, cmd):
+        try:
+            subprocess.run(["mount", "-o", "bind", "/dev", f"{self.squashfs_dir}/dev"])
+            subprocess.run(["mount", "-o", "bind", "/proc", f"{self.squashfs_dir}/proc"])
+            subprocess.run(["chroot", self.squashfs_dir] + cmd)
+        finally:
+            subprocess.run(["umount", f"{self.squashfs_dir}/dev"])
+            subprocess.run(["umount", f"{self.squashfs_dir}/proc"])
+
+    def __linkDirectory(self, from_path, to_path):
+        rfrom = os.path.realpath(from_path)
+        if not self.__isEmptyDirectory(rfrom):
+            here = os.path.realpath(to_path)
+            if not os.path.exists(here):
+                # It is unlikely that e.g., /System/Index/bin does not exist, but
+                # we treat the situation anyhow.
+                os.makedirs(here)
+
+            with open("/dev/null", "w") as devnull:
+                env = {}
+                for name in ["debugFD", "verboseFD", "terseFD", "errorFD", "normalFD"]:
+                    env[name] = "2"
+                env["scriptName"] = "RefreshLiveCD"
+                env["goboPrograms"] = "/Programs"
+                env["goboPrefix"] = self.squashfs_dir
+
+                self.__pushd(here)
+                cmd = ["/bin/LinkOrExpandAll", rfrom, self.overwrite, self.relative, self.no_follow]
+                subprocess.run(cmd, env=env, stderr=devnull)
+                self.__popd()
+        else:
+            try:
+                os.unlink(rfrom)
+            except:
+                pass
+
+    def __pushd(self, path):
+        self.directory_stack.append(os.getcwd())
+        os.chdir(path)
+
+    def __popd(self):
+        old_path = self.directory_stack.pop(-1)
+        os.chdir(old_path)
+
+    def __isEmptyDirectory(self, path):
+        return len(glob(f"{path}/*")) == 0
 
 def main():
     if len(sys.argv) < 3:
