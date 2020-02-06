@@ -322,7 +322,7 @@ class InChroot:
         program = program_version_path[1:].split("/")[1]
         version = program_version_path[1:].split("/")[2]
         self.exec(["/bin/UpdateSettings", "-a", program, version])
-        self.exec(["/bin/SymlinkProgram", "-c", "overwrite", program, version])
+        self.exec(["/bin/SymlinkProgram", "-c", "overwrite", "-u", "install", program, version])
 
     def exec(self, cmd, quiet=False):
         env = {"SUDO_USER": ""}
@@ -353,7 +353,7 @@ class InChroot:
                 self.__pushd(symlink_target_dir)
                 cmd = ["/bin/LinkOrExpandAll", inner_rfrom, self.overwrite, self.relative, self.no_follow]
                 subprocess.run(cmd, env=env, stderr=devnull)
-                self.popd()
+                self.__popd()
 
     def __pushd(self, path):
         self.directory_stack.append(os.getcwd())
