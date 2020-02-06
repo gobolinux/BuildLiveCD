@@ -140,6 +140,7 @@ class BinaryPackage:
     def merge(self, squashfs_dir):
         name, version = self.programName(), self.programVersion()
         programs_dir = f"{squashfs_dir}/Programs"
+        settings_dir = f"{programs_dir}/{name}/Settings"
         current_symlink = f"{programs_dir}/{name}/Current"
 
         new_path = f"{programs_dir}/{name}/{version}"
@@ -151,33 +152,47 @@ class BinaryPackage:
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
                 print(f"Replacing outdated program {name}")
-                removed = self.__removeProgram(new_path)
+                removed = self.__removeProgram(new_path, settings_dir)
                 self.__uncompressAndLink(programs_dir, new_path, current_symlink)
                 self.__removeBrokenLinks(squashfs_dir, removed)
             else:
                 print(f"Keeping existing program {name}")
         elif old_path is not None:
             print(f"Replacing outdated program {name}")
-            removed = self.__removeProgram(old_path)
+            removed = self.__removeProgram(old_path, settings_dir)
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
             self.__removeBrokenLinks(squashfs_dir, removed)
         elif old_path is None:
             print(f"Adding program {name}")
             self.__uncompressAndLink(programs_dir, new_path, current_symlink)
 
-    def __removeProgram(self, path):
+    def __removeProgram(self, path, settings_dir):
         # Remove directory tree
-        removed_files = [x.replace(path, "")[1:] for x in glob(f"{path}/**", recursive=True)]
+        removed_files = [
+            x.replace(path, "/")[1:]
+            for x in glob(f"{path}/**", recursive=True)]
         shutil.rmtree(path)
+
+        # Remove program settings
+        if os.path.exists(settings_dir):
+            removed_settings = [
+                "/etc{}".format(x.replace(settings_dir, "")[1:])
+                for x in glob(f"{settings_dir}/**", recursive=True)]
+            removed_files += removed_settings
+            shutil.rmtree(settings_dir)
         return removed_files
 
     def __removeBrokenLinks(self, squashfs_dir, removed_files):
         broken_list = []
         for path in removed_files:
-            # Was this file likely linked to /System/Index?
-            for system_index_dir in ["bin", "include", "lib", "libexec", "share"]:
+            # Was this file linked to /System/Settings?
+            if path.startswith("/etc"):
+                broken_list.append(path)
+                continue
+            # Was this file linked to /System/Index?
+            for system_index_dir in ["/bin", "/include", "/lib", "/libexec", "/share"]:
                 if path.startswith(system_index_dir):
-                    broken_list.append(path)
+                    broken_list.append(f"/System/Index{path}")
                     break
         # Prevent the argument list from growing too long. We should, ideally, check
         # the output of `getconf ARG_MAX` and split the list according to the number
@@ -286,6 +301,7 @@ class InChroot:
         # Chroot and SymlinkProgram
         program = program_version_path.split("/")[1]
         version = program_version_path.split("/")[2]
+        self.exec(["/bin/UpdateSettings", "-a", program, version])
         self.exec(["/bin/SymlinkProgram", "-c", "overwrite", program, version])
 
     def exec(self, cmd):
