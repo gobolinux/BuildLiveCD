@@ -215,6 +215,8 @@ class ISOLinux:
     def __init__(self, path):
         self.path = path
         self.old_kernel_path = f"{self.path}/kernel"
+        self.old_initramfs = f"{self.path}/initramfs"
+        self.needs_initramfs_refresh = False
 
     def updateKernel(self, new_kernel_path):
         old_timestamp = os.stat(self.old_kernel_path).st_mtime
@@ -223,6 +225,37 @@ class ISOLinux:
             print("--> Updating ISOLINUX kernel file")
             os.unlink(self.old_kernel_path)
             shutil.copy2(new_kernel_path, self.old_kernel_path)
+            self.needs_initramfs_refresh = True
+
+    def updateInitramfs(self, force=False):
+        if not self.needs_initramfs_refresh and not force:
+            return
+        print("--> Updating Initramfs")
+        # Expected output from the `file` command:
+        # kernel: Linux kernel x86 boot executable bzImage, version 5.4.15-Gobo (root@Soundgarden) [...]
+        parts = subprocess.check_output(["file", self.old_kernel_path], stderr=subprocess.STDOUT).split()
+        index = parts.index(b"version")
+        if index < 0:
+            print(f"Failed to identify kernel version from {self.old_kernel_path}")
+            sys.exit(1)
+        kernel_version = parts[index+1].decode("utf-8")
+        cmd = [
+            "dracut",
+            "--kver", kernel_version,
+            "-m", "bash kernel-modules kernel-modules-extra udev-rules base fs-lib shutdown img-lib dmsquash-live",
+            "--filesystems", "squashfs iso9660",
+            "--show-modules",
+            "--force",
+            "-L", "4"
+        ]
+        subprocess.run(cmd)
+        new_initramfs = f"/System/Kernel/Boot/initramfs-{kernel_version}.img"
+        if not os.path.exists(new_initramfs):
+            print("Failed to generate initramfs file")
+            sys.exit(1)
+        if os.path.exists(self.old_initramfs):
+            os.unlink(self.old_initramfs)
+        shutil.move(new_initramfs, self.old_initramfs)
 
 class InChroot:
     def __init__(self, squashfs_dir):
@@ -336,6 +369,7 @@ def main():
     kernel_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel"
     bootloader = ISOLinux(f"{work_dir}/isolinux")
     bootloader.updateKernel(f"{work_dir}/rootfs/{kernel_path}")
+    bootloader.updateInitramfs(force=False)
 
     new_iso = ISOFile(f"{work_dir}/gobolinux.iso")
     new_iso.create(work_dir)
