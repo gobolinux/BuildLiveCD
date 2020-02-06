@@ -294,6 +294,7 @@ class ISOLinux:
 
 class InChroot:
     def __init__(self, squashfs_dir):
+        self.directory_stack = []
         self.squashfs_dir = squashfs_dir
         self.overwrite = "--overwrite"
         self.relative  = "" # "--relative"
@@ -340,7 +341,7 @@ class InChroot:
         inner_rfrom = os.path.realpath(from_path)
         outer_rfrom = "{}{}".format(self.squashfs_dir, inner_rfrom)
         if not self.__isEmptyDirectory(outer_rfrom):
-            here = os.path.realpath(to_path)
+            symlink_target_dir = os.path.realpath(to_path)
             with open("/dev/null", "w") as devnull:
                 env = {}
                 for name in ["debugFD", "verboseFD", "terseFD", "errorFD", "normalFD"]:
@@ -349,8 +350,18 @@ class InChroot:
                 env["goboPrograms"] = "/Programs"
                 env["goboPrefix"] = self.squashfs_dir
 
+                self.__pushd(symlink_target_dir)
                 cmd = ["/bin/LinkOrExpandAll", inner_rfrom, self.overwrite, self.relative, self.no_follow]
                 subprocess.run(cmd, env=env, stderr=devnull)
+                self.popd()
+
+    def __pushd(self, path):
+        self.directory_stack.append(os.getcwd())
+        os.chdir(path)
+
+    def __popd(self):
+        old_path = self.directory_stack.pop(-1)
+        os.chdir(old_path)
 
     def __isEmptyDirectory(self, path):
         return len(glob(f"{path}/*")) == 0
