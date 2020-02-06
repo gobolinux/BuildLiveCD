@@ -119,52 +119,72 @@ class BinaryPackage:
     def programName(self):
         return os.path.basename(self.package_file).split("--")[0]
 
-    def programVersion(self):
-        full_version = os.path.basename(self.package_file).split("--")[1]
-        revision = full_version.rfind("-r")
-        version = full_version if revision == -1 else full_version[:revision]
-        return version
+    def programVersion(self, squashfs_dir=None, from_tarball=True):
+        if from_tarball:
+            full_version = os.path.basename(self.package_file).split("--")[1]
+            revision = full_version.rfind("-r")
+            version = full_version if revision == -1 else full_version[:revision]
+            return version
+        return self.priorVersion(squashfs_dir)
 
-    def priorVersion(self, programs_dir):
-        path = f"{programs_dir}/{self.programName()}"
-        versions = glob(f"{path}/*")
+    def priorVersion(self, squashfs_dir):
+        path = f"{squashfs_dir}/Programs/{self.programName()}"
+        versions = [x.replace(f"{path}/", "") for x in glob(f"{path}/*")]
         for ignore_version in ["Current", "Variable", "Settings"]:
             try:
                 versions.remove(ignore_version)
             except ValueError:
                 pass
-        if len(versions) != 1:
-            print(f"Warning: more than one version exists at {path}")
+        if len(versions) == 0:
+            return None
+        elif len(versions) > 1:
+            print(f"Warning: more than one version exists at {path}: {versions}")
         return sorted(versions)[0]
 
+    def getPaths(self, squashfs_dir, from_tarball=True):
+        version = self.programVersion(squashfs_dir, from_tarball)
+        if version is None:
+            return None
+        p = {}
+        p["name"] = self.programName()
+        p["version"] = version
+        p["programs"] = f"{squashfs_dir}/Programs"
+        p["path"] = "{}/{}/{}".format(p["programs"], p["name"], p["version"])
+        p["settings"] = "{}/{}/Settings".format(p["programs"], p["name"])
+        p["current"] = "{}/{}/Current".format(p["programs"], p["name"])
+        return p
+
+    def removePrior(self, squashfs_dir):
+        p = self.getPaths(squashfs_dir, from_tarball=False)
+        if p is not None:
+            removed = self.__removeProgram(p["path"], p["settings"])
+            if os.path.lexists(p["current"]):
+                os.unlink(p["current"])
+            self.__removeBrokenLinks(squashfs_dir, removed)
+
     def merge(self, squashfs_dir):
-        name, version = self.programName(), self.programVersion()
-        programs_dir = f"{squashfs_dir}/Programs"
-        settings_dir = f"{programs_dir}/{name}/Settings"
-        current_symlink = f"{programs_dir}/{name}/Current"
+        new_p = self.getPaths(squashfs_dir, True)
+        old_p = self.getPaths(squashfs_dir, False)
+        name = new_p["name"]
 
-        new_path = f"{programs_dir}/{name}/{version}"
-        old_path = sorted(glob(f"{programs_dir}/{name}/*"))
-        old_path = old_path[0] if len(old_path) > 0 else None
-
-        if os.path.exists(new_path):
-            path_timestamp = os.stat(new_path).st_ctime
+        if os.path.exists(new_p["path"]):
+            path_timestamp = os.stat(new_p["path"]).st_ctime
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
                 print(f"Replacing outdated program {name}")
-                removed = self.__removeProgram(new_path, settings_dir)
-                self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+                removed = self.__removeProgram(new_p["path"], new_p["settings"])
+                self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
                 self.__removeBrokenLinks(squashfs_dir, removed)
             else:
                 print(f"Keeping existing program {name}")
-        elif old_path is not None:
-            print(f"Replacing outdated program {name}")
-            removed = self.__removeProgram(old_path, settings_dir)
-            self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+        elif old_p is not None:
+            print(f"Replacing previous version of {name}")
+            removed = self.__removeProgram(old_p["path"], old_p["settings"])
+            self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
             self.__removeBrokenLinks(squashfs_dir, removed)
-        elif old_path is None:
+        elif old_p is None:
             print(f"Adding program {name}")
-            self.__uncompressAndLink(programs_dir, new_path, current_symlink)
+            self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
 
     def __removeProgram(self, path, settings_dir):
         # Remove directory tree
@@ -200,7 +220,7 @@ class BinaryPackage:
         # of 10k file names should work for the most common use cases.
         chroot = InChroot(squashfs_dir)
         for chunk in self.__splitList(broken_list, 10000):
-            chroot.exec(["/bin/RemoveBroken"] + chunk)
+            chroot.exec(["/bin/RemoveBroken"] + chunk, quiet=True)
 
     def __splitList(self, the_list, n):
         for i in range(0, len(the_list), n):
@@ -274,7 +294,6 @@ class ISOLinux:
 
 class InChroot:
     def __init__(self, squashfs_dir):
-        self.directory_stack = []
         self.squashfs_dir = squashfs_dir
         self.overwrite = "--overwrite"
         self.relative  = "" # "--relative"
@@ -299,29 +318,29 @@ class InChroot:
             self.__linkDirectory(source, target)
 
         # Chroot and SymlinkProgram
-        program = program_version_path.split("/")[1]
-        version = program_version_path.split("/")[2]
+        program = program_version_path[1:].split("/")[1]
+        version = program_version_path[1:].split("/")[2]
         self.exec(["/bin/UpdateSettings", "-a", program, version])
         self.exec(["/bin/SymlinkProgram", "-c", "overwrite", program, version])
 
-    def exec(self, cmd):
-        try:
-            subprocess.run(["mount", "-o", "bind", "/dev", f"{self.squashfs_dir}/dev"])
-            subprocess.run(["mount", "-o", "bind", "/proc", f"{self.squashfs_dir}/proc"])
-            subprocess.run(["chroot", self.squashfs_dir] + cmd)
-        finally:
-            subprocess.run(["umount", f"{self.squashfs_dir}/dev"])
-            subprocess.run(["umount", f"{self.squashfs_dir}/proc"])
+    def exec(self, cmd, quiet=False):
+        env = {"SUDO_USER": ""}
+        with open("/dev/null", "w") as devnull:
+            fout = devnull if quiet == True else None
+            ferr = devnull if quiet == True else None
+            try:
+                subprocess.run(["mount", "-o", "bind", "/dev", f"{self.squashfs_dir}/dev"])
+                subprocess.run(["mount", "-o", "bind", "/proc", f"{self.squashfs_dir}/proc"])
+                subprocess.run(["chroot", self.squashfs_dir] + cmd, stdout=fout, stderr=ferr, env=env)
+            finally:
+                subprocess.run(["umount", f"{self.squashfs_dir}/dev"])
+                subprocess.run(["umount", f"{self.squashfs_dir}/proc"])
 
     def __linkDirectory(self, from_path, to_path):
-        rfrom = os.path.realpath(from_path)
-        if not self.__isEmptyDirectory(rfrom):
+        inner_rfrom = os.path.realpath(from_path)
+        outer_rfrom = "{}{}".format(self.squashfs_dir, inner_rfrom)
+        if not self.__isEmptyDirectory(outer_rfrom):
             here = os.path.realpath(to_path)
-            if not os.path.exists(here):
-                # It is unlikely that e.g., /System/Index/bin does not exist, but
-                # we treat the situation anyhow.
-                os.makedirs(here)
-
             with open("/dev/null", "w") as devnull:
                 env = {}
                 for name in ["debugFD", "verboseFD", "terseFD", "errorFD", "normalFD"]:
@@ -330,23 +349,8 @@ class InChroot:
                 env["goboPrograms"] = "/Programs"
                 env["goboPrefix"] = self.squashfs_dir
 
-                self.__pushd(here)
-                cmd = ["/bin/LinkOrExpandAll", rfrom, self.overwrite, self.relative, self.no_follow]
+                cmd = ["/bin/LinkOrExpandAll", inner_rfrom, self.overwrite, self.relative, self.no_follow]
                 subprocess.run(cmd, env=env, stderr=devnull)
-                self.__popd()
-        else:
-            try:
-                os.unlink(rfrom)
-            except:
-                pass
-
-    def __pushd(self, path):
-        self.directory_stack.append(os.getcwd())
-        os.chdir(path)
-
-    def __popd(self):
-        old_path = self.directory_stack.pop(-1)
-        os.chdir(old_path)
 
     def __isEmptyDirectory(self, path):
         return len(glob(f"{path}/*")) == 0
@@ -376,6 +380,13 @@ def main():
 
     # Extract tarballs
     if packages_dir is not None:
+        if len(glob(f"{packages_dir}/-*")):
+            print("--> Removing unwanted packages")
+            for path in glob(f"{packages_dir}/-*"):
+                dummy = "{}--0--x86_64.tar.bz2".format(path.replace("/-", "/"))
+                p = BinaryPackage(dummy)
+                p.removePrior(f"{work_dir}/rootfs")
+
         print("--> Processing tarballs")
         for path in glob(f"{packages_dir}/*.bz2"):
             p = BinaryPackage(path)
