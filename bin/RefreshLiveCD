@@ -293,7 +293,7 @@ class Initramfs:
         shutil.move(new_initramfs_path, initramfs_path)
         return True
 
-    def liveString(self, kernel_version):
+    def installedString(self, kernel_version):
         return [
             "dracut",
             "--kver", kernel_version,
@@ -302,7 +302,7 @@ class Initramfs:
             "-L", "4"
         ]
 
-    def installedString(self, kernel_version):
+    def liveString(self, kernel_version):
         return [
             "dracut",
             "--kver", kernel_version,
