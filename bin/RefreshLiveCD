@@ -440,6 +440,14 @@ def main():
             p = BinaryPackage(path)
             p.merge(f"{work_dir}/rootfs")
 
+    # Update GoboLinuxVersion
+    gobolinux_version = "017 alpha"
+    with open(f"{work_dir}/rootfs/System/Settings/GoboLinuxVersion", "r+") as f:
+        v = f.readline().strip("\n")
+        if v != gobolinux_version:
+            f.truncate(0)
+            f.write(f"{gobolinux_version}\n")
+
     # Update kernel image used by the Live environment
     boot_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot"
     kernel_path = f"{boot_path}/kernel"
