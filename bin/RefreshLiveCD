@@ -35,7 +35,7 @@ class ISOFile(BaseImageFile):
         self.iso_file = iso_file
         self.mountpoint = ""
         self.squashfs_dirs = []
-    
+
     def mount(self, mountpoint):
         self.mountpoint = mountpoint
         return super().mount(self.iso_file, self.mountpoint)
@@ -154,8 +154,8 @@ class BinaryPackage:
         p["current"] = "{}/{}/Current".format(p["programs"], p["name"])
         return p
 
-    def removePrior(self, squashfs_dir):
-        p = self.getPaths(squashfs_dir, from_tarball=False)
+    def removePrior(self, squashfs_dir, from_tarball=False):
+        p = self.getPaths(squashfs_dir, from_tarball)
         if p is not None:
             removed = self.__removeProgram(p["path"], p["settings"])
             if os.path.lexists(p["current"]):
@@ -171,35 +171,45 @@ class BinaryPackage:
             path_timestamp = os.stat(new_p["path"]).st_ctime
             package_timestamp = os.stat(self.package_file).st_ctime
             if path_timestamp < package_timestamp:
-                print(f"Replacing outdated program {name}")
+                print(f"--> Replacing outdated program {name} at {new_p['path']}")
                 removed = self.__removeProgram(new_p["path"], new_p["settings"])
+                print(f"    Removed {len(removed)} files")
                 self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
                 self.__removeBrokenLinks(squashfs_dir, removed)
             else:
-                print(f"Keeping existing program {name}")
-        elif old_p is not None:
-            print(f"Replacing previous version of {name}")
+                print(f"--> Keeping existing program {name}")
+        if old_p is not None and old_p["path"] != new_p["path"]:
+            print(f"--> Replacing previous version of {name} at {old_p['path']}")
             removed = self.__removeProgram(old_p["path"], old_p["settings"])
+            print(f"    Removed {len(removed)} files")
             self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
             self.__removeBrokenLinks(squashfs_dir, removed)
-        elif old_p is None:
-            print(f"Adding program {name}")
+        elif old_p is None and not os.path.exists(new_p["path"]):
+            print(f"--> Adding program {name}")
             self.__uncompressAndLink(new_p["programs"], new_p["path"], new_p["current"])
 
     def __removeProgram(self, path, settings_dir):
-        # Remove directory tree
-        removed_files = [
-            x.replace(path, "/")[1:]
-            for x in glob(f"{path}/**", recursive=True)]
-        shutil.rmtree(path)
+        removed_files = []
+        if os.path.exists(path):
+            # Remove directory tree
+            removed_files += [
+                x.replace(path, "/")[1:]
+                for x in glob(f"{path}/**", recursive=True)]
+            shutil.rmtree(path)
 
-        # Remove program settings
-        if os.path.exists(settings_dir):
-            removed_settings = [
-                "/etc{}".format(x.replace(settings_dir, "")[1:])
-                for x in glob(f"{settings_dir}/**", recursive=True)]
-            removed_files += removed_settings
-            shutil.rmtree(settings_dir)
+            # Remove program settings
+            if os.path.exists(settings_dir):
+                removed_settings = [
+                    "/etc{}".format(x.replace(settings_dir, "")[1:])
+                    for x in glob(f"{settings_dir}/**", recursive=True)]
+                removed_files += removed_settings
+                shutil.rmtree(settings_dir)
+
+            # Attempt to remove the parent directory (i.e., /Programs/Foo)
+            try:
+                os.unlink(os.path.dirname(path))
+            except:
+                pass
         return removed_files
 
     def __removeBrokenLinks(self, squashfs_dir, removed_files):
@@ -220,7 +230,7 @@ class BinaryPackage:
         # of 10k file names should work for the most common use cases.
         chroot = InChroot(squashfs_dir)
         for chunk in self.__splitList(broken_list, 10000):
-            chroot.exec(["/bin/RemoveBroken"] + chunk, quiet=True)
+            chroot.exec(["/bin/RemoveBroken"] + chunk, quiet=False)
 
     def __splitList(self, the_list, n):
         for i in range(0, len(the_list), n):
@@ -265,16 +275,35 @@ class ISOLinux:
     def updateInitramfs(self, force=False):
         if not self.needs_initramfs_refresh and not force:
             return
-        print("--> Updating Initramfs")
-        # Expected output from the `file` command:
-        # kernel: Linux kernel x86 boot executable bzImage, version 5.4.15-Gobo (root@Soundgarden) [...]
-        parts = subprocess.check_output(["file", self.old_kernel_path], stderr=subprocess.STDOUT).split()
-        index = parts.index(b"version")
-        if index < 0:
-            print(f"Failed to identify kernel version from {self.old_kernel_path}")
+        print("--> Updating Initramfs for the Live image")
+        if Initramfs().create(self.old_kernel_path, self.old_initramfs) == False:
             sys.exit(1)
-        kernel_version = parts[index+1].decode("utf-8")
-        cmd = [
+
+class Initramfs:
+    def create(self, kernel_path, initramfs_path, live=True):
+        kernel_version = self.kernelVersion(kernel_path)
+        cmd = self.liveString(kernel_version) if live else self.installedString(kernel_version)
+        subprocess.run(cmd)
+        new_initramfs_path = f"/System/Kernel/Boot/initramfs-{kernel_version}.img"
+        if not os.path.exists(new_initramfs_path):
+            print("Failed to generate initramfs file")
+            return False
+        if os.path.exists(initramfs_path):
+            os.unlink(initramfs_path)
+        shutil.move(new_initramfs_path, initramfs_path)
+        return True
+
+    def liveString(self, kernel_version):
+        return [
+            "dracut",
+            "--kver", kernel_version,
+            "--show-modules",
+            "--force",
+            "-L", "4"
+        ]
+
+    def installedString(self, kernel_version):
+        return [
             "dracut",
             "--kver", kernel_version,
             "-m", "bash kernel-modules kernel-modules-extra udev-rules base fs-lib shutdown img-lib dmsquash-live",
@@ -283,14 +312,16 @@ class ISOLinux:
             "--force",
             "-L", "4"
         ]
-        subprocess.run(cmd)
-        new_initramfs = f"/System/Kernel/Boot/initramfs-{kernel_version}.img"
-        if not os.path.exists(new_initramfs):
-            print("Failed to generate initramfs file")
+
+    def kernelVersion(self, kernel_path):
+        # Expected output from the `file` command:
+        # kernel: Linux kernel x86 boot executable bzImage, version 5.4.15-Gobo (root@Soundgarden) [...]
+        parts = subprocess.check_output(["file", kernel_path], stderr=subprocess.STDOUT).split()
+        version_index = parts.index(b"version")
+        if version_index < 0:
+            print(f"Failed to identify kernel version from {kernel_path}")
             sys.exit(1)
-        if os.path.exists(self.old_initramfs):
-            os.unlink(self.old_initramfs)
-        shutil.move(new_initramfs, self.old_initramfs)
+        return parts[version_index+1].decode("utf-8")
 
 class InChroot:
     def __init__(self, squashfs_dir):
@@ -394,9 +425,15 @@ def main():
         if len(glob(f"{packages_dir}/-*")):
             print("--> Removing unwanted packages")
             for path in glob(f"{packages_dir}/-*"):
-                dummy = "{}--0--x86_64.tar.bz2".format(path.replace("/-", "/"))
+                try:
+                    from_tarball = True
+                    version = os.path.basename(path).split("--")[1]
+                    dummy = "{}--{}--x86_64.tar.bz2".format(path.replace("/-", "/"), version)
+                except IndexError:
+                    from_tarball = False
+                    dummy = "{}--0--x86_64.tar.bz2".format(path.replace("/-", "/"))
                 p = BinaryPackage(dummy)
-                p.removePrior(f"{work_dir}/rootfs")
+                p.removePrior(f"{work_dir}/rootfs", from_tarball)
 
         print("--> Processing tarballs")
         for path in glob(f"{packages_dir}/*.bz2"):
@@ -404,10 +441,19 @@ def main():
             p.merge(f"{work_dir}/rootfs")
 
     # Update kernel image used by the Live environment
-    kernel_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot/kernel"
+    boot_path = "/Programs/Linux/Current/Resources/Unmanaged/System/Kernel/Boot"
+    kernel_path = f"{boot_path}/kernel"
     bootloader = ISOLinux(f"{work_dir}/isolinux")
     bootloader.updateKernel(f"{work_dir}/rootfs/{kernel_path}")
     bootloader.updateInitramfs(force=False)
+
+    # Create initramfs to be used by the installed system
+    if bootloader.needs_initramfs_refresh:
+        print("--> Updating Initramfs for the installed system")
+        kernel_path = f"{work_dir}/isolinux/kernel"
+        kernel_version = Initramfs().kernelVersion(kernel_path)
+        initramfs_path = f"{work_dir}/rootfs/{boot_path}/initramfs-{kernel_version}"
+        Initramfs().create(kernel_path, initramfs_path, live=False)
 
     new_iso = ISOFile(f"{work_dir}/gobolinux.iso")
     new_iso.create(work_dir)
