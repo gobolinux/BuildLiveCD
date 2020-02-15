@@ -67,17 +67,24 @@ class ISOFile(BaseImageFile):
         efiboot_file = "isolinux/efiboot.img"
         print("--> Generating ISO file...")
         cmd = [
-            "xorrisofs",
+            "xorriso",
+            "-as", "mkisofs",
+            "-iso-level", "3",
+            "-full-iso9660-filenames",
             "-R",
-            "-b", "isolinux/isolinux.bin",
-            "-c", "isolinux/boot.cat",
+            "-eltorito-boot", "isolinux/isolinux.bin",
+            "-eltorito-catalog", "isolinux/boot.cat",
             "-no-emul-boot",
             "-boot-load-size", "4",
             "-boot-info-table",
+            "-isohybrid-mbr", "/usr/share/syslinux/isohdpfx.bin",
             "-input-charset", "utf-8",
+            # Add boot support via EFI:
             "-eltorito-alt-boot",
-            "-eltorito-boot", efiboot_file,
+            "-e", efiboot_file,
             "-no-emul-boot",
+            "-isohybrid-gpt-basdat",
+            # Volume information
             "-appid", "GoboLinux Live Installer",
             "-V", "GOBOLINUX_LIVE_INSTALLER",
             "-publisher", "GoboLinux.org",
@@ -88,6 +95,7 @@ class ISOFile(BaseImageFile):
             out_dir
         ]
         subprocess.run(cmd)
+        subprocess.run(["isohybrid", "--uefi", self.iso_file])
 
 
 class SquashFile(BaseImageFile):
@@ -278,6 +286,9 @@ class ISOLinux:
         print("--> Updating Initramfs for the Live image")
         if Initramfs().create(self.old_kernel_path, self.old_initramfs) == False:
             sys.exit(1)
+        # Set the needs_initramfs_refresh flag so that the initramfs
+        # for the Installed system can be rebuilt as well
+        self.needs_initramfs_refresh = True
 
 class Initramfs:
     def create(self, kernel_path, initramfs_path, live=True):
