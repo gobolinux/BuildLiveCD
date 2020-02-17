@@ -114,11 +114,9 @@ class SquashFile(BaseImageFile):
         subprocess.run(cmd)
 
     def create(self, src_dirs):
-        # TODO: improve rebuild test
-        if not os.path.exists(self.squash_file):
-            cmd = ["mksquashfs"] + src_dirs + [self.squash_file]
-            cmd += ["-comp", "zstd", "-noappend", "-no-sparse", "-keep-as-directory"]
-            subprocess.run(cmd)
+        cmd = ["mksquashfs"] + src_dirs + [self.squash_file]
+        cmd += ["-comp", "gzip", "-noappend", "-no-sparse", "-keep-as-directory"]
+        subprocess.run(cmd)
 
 class BinaryPackage:
     def __init__(self, package_file):
