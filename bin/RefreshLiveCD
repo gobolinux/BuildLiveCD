@@ -115,7 +115,7 @@ class SquashFile(BaseImageFile):
 
     def create(self, src_dirs):
         cmd = ["mksquashfs"] + src_dirs + [self.squash_file]
-        cmd += ["-comp", "gzip", "-noappend", "-no-sparse", "-keep-as-directory"]
+        cmd += ["-comp", "gzip", "-noappend", "-no-sparse", "-keep-as-directory", "-Xcompression-level", "5"]
         subprocess.run(cmd)
 
 class BinaryPackage:
@@ -450,7 +450,7 @@ def main():
             p.merge(f"{work_dir}/rootfs")
 
     # Update GoboLinuxVersion
-    gobolinux_version = "017 alpha"
+    gobolinux_version = "017 beta"
     with open(f"{work_dir}/rootfs/System/Settings/GoboLinuxVersion", "r+") as f:
         v = f.readline().strip("\n")
         if v != gobolinux_version:
@@ -462,14 +462,14 @@ def main():
     kernel_path = f"{boot_path}/kernel"
     bootloader = ISOLinux(f"{work_dir}/isolinux")
     bootloader.updateKernel(f"{work_dir}/rootfs/{kernel_path}")
-    bootloader.updateInitramfs(force=False)
+    bootloader.updateInitramfs(force=True)
 
     # Create initramfs to be used by the installed system
     if bootloader.needs_initramfs_refresh:
         print("--> Updating Initramfs for the installed system")
         kernel_path = f"{work_dir}/isolinux/kernel"
         kernel_version = Initramfs().kernelVersion(kernel_path)
-        initramfs_path = f"{work_dir}/rootfs/{boot_path}/initramfs-{kernel_version}"
+        initramfs_path = f"{work_dir}/rootfs/{boot_path}/initramfs-{kernel_version}.img"
         Initramfs().create(kernel_path, initramfs_path, live=False)
 
     new_iso = ISOFile(f"{work_dir}/gobolinux.iso")
