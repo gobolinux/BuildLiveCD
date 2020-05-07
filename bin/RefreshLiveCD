@@ -450,11 +450,12 @@ def main():
             p.merge(f"{work_dir}/rootfs")
 
     # Update GoboLinuxVersion
-    gobolinux_version = "017 beta"
+    gobolinux_version = "017-rc1"
     with open(f"{work_dir}/rootfs/System/Settings/GoboLinuxVersion", "r+") as f:
         v = f.readline().strip("\n")
         if v != gobolinux_version:
             f.truncate(0)
+            f.seek(0)
             f.write(f"{gobolinux_version}\n")
 
     # Update kernel image used by the Live environment
