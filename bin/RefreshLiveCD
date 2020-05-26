@@ -450,7 +450,7 @@ def main():
             p.merge(f"{work_dir}/rootfs")
 
     # Update GoboLinuxVersion
-    gobolinux_version = "017-rc1"
+    gobolinux_version = "017"
     with open(f"{work_dir}/rootfs/System/Settings/GoboLinuxVersion", "r+") as f:
         v = f.readline().strip("\n")
         if v != gobolinux_version:
