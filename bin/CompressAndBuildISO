@@ -468,17 +468,19 @@ then
    rwlayer="${root}/Output/RWLayer"
    efiapp_name="Output/ISO/isolinux/BOOTx64.EFI"
    cp "$datadir/grub-efi.cfg" "$rwlayer/"
+   cp "$datadir/splash.png" "$rwlayer/"
 
    $(dirname $0)/ChrootEnvironment grub-mkstandalone-efi \
      -d "/lib/grub/x86_64-efi" \
      -O x86_64-efi \
-     --modules="part_gpt part_msdos iso9660 all_video efi_gop efi_uga gfxterm gettext font" \
+     --modules="part_gpt part_msdos iso9660 all_video efi_gop efi_uga gfxterm gettext font png gfxterm_background" \
      --fonts="unicode" \
      --themes="" \
      -o "/$(basename $efiapp_name)" \
      --compress=gz \
-     "boot/grub/grub.cfg=/grub-efi.cfg"
-   rm -f "$rwlayer/grub-efi.cfg"
+     "boot/grub/grub.cfg=/grub-efi.cfg" \
+     "boot/grub/splash.png=/splash.png"
+   rm -f "$rwlayer/grub-efi.cfg" "$rwlayer/splash.png"
    mv "$rwlayer/$(basename $efiapp_name)" "$efiapp_name" || exit 1
 
    echo "Create EFI boot image"
