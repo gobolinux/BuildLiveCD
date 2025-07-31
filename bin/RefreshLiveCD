@@ -316,7 +316,7 @@ class Initramfs:
             "dracut",
             "--kver", kernel_version,
             "-m", "bash kernel-modules kernel-modules-extra udev-rules base fs-lib shutdown img-lib dmsquash-live",
-            "--filesystems", "squashfs iso9660",
+            "--filesystems", "squashfs iso9660 ext4",
             "--show-modules",
             "--force",
             "-L", "4"
